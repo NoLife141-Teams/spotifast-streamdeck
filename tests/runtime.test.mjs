@@ -11,7 +11,7 @@ function key(id = 'nowplaying', instance = id) {
     async setState(value) { this.states.push(value); }, async setImage(value) { this.images.push(value); }, async setTitle(value) { this.titles.push(value); }, async showAlert() { this.alerts++; } };
 }
 async function runtime(options = {}) {
-  const callbacks = {}, messages = [], warnings = [], errors = [], timeouts = new Map();
+  const callbacks = {}, messages = [], warnings = [], errors = [], timeouts = new Map(), intervals = new Map();
   const client = { customPath: '', data: { state: 'paused', title: '', artists: '', volume: 50, repeat: 'off', shuffle: false, saved: 'no', artUrl: '' }, calls: [], reads: 0,
     configure(p = '') { this.customPath = p; },
     async snapshot() { this.reads++; if (this.snapshotError) throw this.snapshotError; return { ...this.data }; },
@@ -24,12 +24,12 @@ async function runtime(options = {}) {
     system: { onSystemDidWakeUp: cb => callbacks.wake = cb }, logger: { info() {}, warn(value) { warnings.push(value); }, error(error) { errors.push(error); } }
   };
   for (const name of ['onWillAppear', 'onWillDisappear', 'onKeyDown', 'onDialRotate', 'onDialDown', 'onTouchTap']) sdk.actions[name] = cb => callbacks[name] = cb;
-  const timers = { setTimeout(cb) { const id = {}; timeouts.set(id, cb); return id; }, clearTimeout(id) { timeouts.delete(id); }, setInterval() {}, clearInterval() {} };
-  const artworkRenderer = { async render(image, title, artists) { return 'caption:' + title.replace(/\s+/g, ' ') + '|' + artists + '|' + (image || ''); } };
+  const timers = { setTimeout(cb, delay) { const id = { delay }; timeouts.set(id, cb); return id; }, clearTimeout(id) { timeouts.delete(id); }, setInterval(cb, period) { const id = {}; intervals.set(id, { cb, period }); return id; }, clearInterval(id) { intervals.delete(id); } };
+  const artworkRenderer = { async render(image, title, artists, options) { const picture = options.showText === false ? image || 'plain-cover' : 'caption:' + title.replace(/\s+/g, ' ') + '|' + artists + '|' + (image || ''); return picture + (options.playbackFeedback ? '|feedback:' + options.playbackFeedback : ''); } };
   const api = createRuntime(sdk, { client, artwork: { async get() {} }, artworkRenderer, timers, ...options });
   await api.start();
   const select = action => { if (sdk.ui.action) callbacks.uiDisappear({ action: sdk.ui.action }); sdk.ui.action = action; if (action) callbacks.uiAppear({ action }); };
-  return { api, client, sdk, callbacks, messages, warnings, errors, select, timeouts };
+  return { api, client, sdk, callbacks, messages, warnings, errors, select, timeouts, intervals };
 }
 
 test('labels follow English/French, including wake-up, without changing action settings', async () => {
@@ -114,4 +114,192 @@ test('artwork checkbox and new profiles use the current cover without native tit
 test('a delayed render is discarded when its action disappears', async () => {
   const delayed = deferred(); const { api, callbacks } = await runtime({ artworkRenderer: { render: () => delayed.promise } }); const action = key(); api.visible.set(action.id, { action, settings: {} });
   const pending = api.refresh(); await flush(); callbacks.onWillDisappear({ action }); delayed.resolve('old-image'); await pending; assert.equal(action.images.length, 0);
+});
+
+test('Favorite follows the saved track state and never confirms a failed change', async () => {
+  const { api, client, callbacks } = await runtime();
+  const action = key('like'); api.visible.set(action.id, { action, settings: {} });
+  client.data.saved = 'no'; await api.refresh(); assert.equal(action.states.at(-1), 0);
+  callbacks.onKeyDown({ action, payload: { settings: {} } }); await flush();
+  assert.deepEqual(client.calls, [['like']]);
+  assert.equal(action.states.at(-1), 0, 'An unconfirmed command must not fill the heart');
+  client.data.saved = 'yes'; await api.refresh(); assert.equal(action.states.at(-1), 1);
+  client.runError = new Error('refused'); await api.perform({ action }, ['like']);
+  assert.equal(action.alerts, 1); assert.equal(action.states.at(-1), 1);
+  client.runError = undefined; client.data.saved = 'no'; client.data.title = 'Next track';
+  await api.refresh(); assert.equal(action.states.at(-1), 0);
+});
+
+test('artwork stays clear at rest and controls playback when all optional overlays are hidden', async () => {
+  const { api, client, callbacks, intervals } = await runtime({ artwork: { async get() { return 'cover'; } } });
+  const action = key();
+  const settings = { showText: false, scrollText: false, showRemaining: false };
+  api.visible.set(action.id, { action, settings });
+  client.data = { ...client.data, state: 'paused', title: 'Track', artUrl: 'https://i.scdn.co/cover' };
+  await api.refresh(); await flush();
+  assert.equal(action.images.at(-1), 'cover');
+  assert.ok(![...intervals.values()].some(timer => timer.period === 100));
+  callbacks.onKeyDown({ action, payload: { settings } }); await flush();
+  assert.deepEqual(client.calls, [['play-pause']]);
+  client.data.state = 'playing'; await api.refresh();
+  assert.equal(action.images.at(-1), 'cover|feedback:playing');
+  client.snapshotError = new Error('offline'); await api.refresh();
+  assert.equal(action.images.at(-1), 'imgs/music.png');
+  assert.equal(action.titles.at(-1), 'Ouvrir\nSpotifast');
+});
+
+test('playback feedback waits for confirmation, fades, and restores hidden-overlay artwork without CLI reads', async () => {
+  let clock = 0;
+  const { api, client, timeouts, intervals } = await runtime({ now: () => clock, artworkRenderer: { async render(image, title, artists, options) { return JSON.stringify(options); } } });
+  const action = key(); api.visible.set(action.id, { action, settings: { showText: false, scrollText: false, showRemaining: false } });
+  client.data = { ...client.data, state: 'playing', title: 'Track' };
+  const frame = () => JSON.parse(action.images.at(-1));
+  await api.refresh(); assert.equal(frame().playbackFeedback, undefined);
+  await api.perform({ action }, ['play-pause']); await api.refresh();
+  assert.equal(frame().playbackFeedback, undefined, 'Command acceptance is not playback confirmation');
+  client.data.state = 'paused'; await api.refresh();
+  assert.equal(frame().playbackFeedback, 'paused'); assert.equal(frame().feedbackOpacity, 1);
+  assert.ok([...intervals.values()].some(timer => timer.period === 100));
+  const reads = client.reads;
+  clock = 900; await api.animate(); assert.equal(frame().feedbackOpacity, 0.5);
+  const [expiryId, expiry] = [...timeouts].find(([id]) => id.delay === 1000);
+  clock = 1000; timeouts.delete(expiryId); expiry(); await flush();
+  assert.equal(frame().playbackFeedback, undefined);
+  assert.equal(client.reads, reads, 'Restoring the artwork must not query the player');
+  assert.ok(![...intervals.values()].some(timer => timer.period === 100));
+  await api.perform({ action }, ['play-pause']); client.data.state = 'playing'; await api.refresh();
+  assert.equal(frame().playbackFeedback, 'playing');
+  expiry(); await flush(); assert.equal(frame().playbackFeedback, 'playing', 'An older expiry cannot clear newer feedback');
+  clock = 2000; await api.animate(); assert.equal(frame().playbackFeedback, undefined);
+  assert.ok(![...timeouts.keys()].some(id => id.delay === 1000));
+  api.stop(); assert.equal(timeouts.size, 0); assert.equal(intervals.size, 0);
+});
+
+test('external changes, failed commands, expired confirmations and configuration changes never show success feedback', async () => {
+  let clock = 0;
+  const { api, client } = await runtime({ now: () => clock, artworkRenderer: { async render(image, title, artists, options) { return JSON.stringify(options); } } });
+  const action = key(); api.visible.set(action.id, { action, settings: {} });
+  const frame = () => JSON.parse(action.images.at(-1));
+  client.data.title = 'Track'; await api.refresh();
+  client.data.state = 'playing'; await api.refresh(); assert.equal(frame().playbackFeedback, undefined);
+  client.runError = new Error('refused'); await api.perform({ action }, ['play-pause']);
+  assert.equal(action.alerts, 1); assert.equal(frame().playbackFeedback, undefined);
+  client.runError = undefined; await api.perform({ action }, ['play-pause']);
+  clock = 6000; client.data.state = 'paused'; await api.refresh(); assert.equal(frame().playbackFeedback, undefined);
+  const delayed = deferred(); client.run = () => delayed.promise;
+  const pending = api.perform({ action }, ['play-pause']); await flush();
+  client.data.state = 'playing'; await api.refresh(); assert.equal(frame().playbackFeedback, undefined);
+  api.configure({ language: 'en' }); delayed.resolve(); await pending; await api.refresh();
+  assert.equal(frame().playbackFeedback, undefined);
+  api.stop();
+});
+
+test('explicit playback commands only confirm their requested state', async () => {
+  for (const [command, target, opposite] of [['play', 'playing', 'paused'], ['pause', 'paused', 'playing']]) {
+    const { api, client } = await runtime({ artworkRenderer: { async render(image, title, artists, options) { return JSON.stringify(options); } } });
+    const artwork = key(); api.visible.set(artwork.id, { action: artwork, settings: {} });
+    const transport = key('playpause');
+    const frame = () => JSON.parse(artwork.images.at(-1));
+    client.data = { ...client.data, title: 'Track', state: target }; await api.refresh();
+    await api.perform({ action: transport }, [command]);
+    client.data.state = opposite; await api.refresh();
+    assert.equal(frame().playbackFeedback, undefined, 'An external change away from the requested state must not confirm the command');
+    await api.perform({ action: transport }, [command]);
+    await api.refresh(); assert.equal(frame().playbackFeedback, undefined, 'Command acceptance must still wait for its requested playback state');
+    client.data.state = target; await api.refresh();
+    assert.equal(frame().playbackFeedback, target, 'The matching state change must confirm the explicit command');
+    api.stop();
+  }
+});
+
+test('rapid presses, profile changes and new tracks cannot replay an old playback confirmation', async () => {
+  let clock = 0;
+  const { api, client, callbacks, timeouts } = await runtime({ now: () => clock, artworkRenderer: { async render(image, title, artists, options) { return JSON.stringify(options); } } });
+  const action = key(); api.visible.set(action.id, { action, settings: {} });
+  const frame = () => JSON.parse(action.images.at(-1));
+  client.data = { ...client.data, title: 'Track', state: 'playing' }; await api.refresh();
+  const first = deferred(), second = deferred(); let call = 0;
+  client.run = () => (++call === 1 ? first.promise : second.promise);
+  const oldPress = api.perform({ action }, ['play-pause']); await flush();
+  client.data.state = 'paused'; await api.refresh(); assert.equal(frame().playbackFeedback, undefined);
+  const recentPress = api.perform({ action }, ['play-pause']); await flush();
+  client.data.state = 'playing'; second.resolve(); await recentPress; await api.refresh();
+  assert.equal(frame().playbackFeedback, 'playing');
+  const expiry = [...timeouts].find(([id]) => id.delay === 1000)[1];
+  first.resolve(); await oldPress; await api.refresh(); assert.equal(frame().playbackFeedback, 'playing');
+  callbacks.onWillDisappear({ action });
+  assert.ok(![...timeouts.keys()].some(id => id.delay === 1000));
+  callbacks.onWillAppear({ action, payload: { settings: {} } }); await api.refresh();
+  expiry(); await flush(); assert.equal(frame().playbackFeedback, undefined);
+  client.run = async () => {};
+  await api.perform({ action }, ['play-pause']); client.data.state = 'paused'; await api.refresh();
+  assert.equal(frame().playbackFeedback, 'paused');
+  client.data.title = 'New track'; await api.refresh(); assert.equal(frame().playbackFeedback, undefined);
+  const late = deferred(); client.run = () => late.promise;
+  const stoppedPress = api.perform({ action }, ['play-pause']); await flush(); api.stop();
+  late.resolve(); await stoppedPress; assert.equal(timeouts.size, 0);
+});
+
+test('animation advances captions and countdown without extra CLI reads, and resets for a new track', async () => {
+  let clock = 1000;
+  const frames = [];
+  const { api, client, callbacks, intervals } = await runtime({ now: () => clock, artworkRenderer: { async render(image, title, artists, options) { frames.push({ title, ...options }); return JSON.stringify([title, options]); } } });
+  client.data = { ...client.data, state: 'playing', title: 'Very long title', artists: 'Very long artist', position: 10000, duration: 120000 };
+  const action = key(); callbacks.onWillAppear({ action, payload: { settings: {} } }); await api.refresh();
+  const reads = client.reads;
+  assert.equal(frames.at(-1).elapsedMs, 0);
+  assert.equal(frames.at(-1).remainingMs, 110000);
+  assert.ok([...intervals.values()].some(timer => timer.period === 100));
+  const titles = action.titles.length;
+  clock += 3200; await api.animate();
+  assert.equal(frames.at(-1).elapsedMs, 3200);
+  assert.equal(frames.at(-1).remainingMs, 106800);
+  assert.equal(client.reads, reads);
+  assert.equal(action.titles.length, titles, 'Animation should update only the image');
+  client.data = { ...client.data, title: 'New title', position: 0 }; await api.refresh();
+  assert.equal(frames.at(-1).elapsedMs, 0);
+  assert.equal(frames.at(-1).remainingMs, 120000);
+  callbacks.onWillDisappear({ action }); assert.ok(![...intervals.values()].some(timer => timer.period === 100));
+  api.stop(); assert.equal(intervals.size, 0);
+});
+
+test('paused countdown is stable; timer, text and animation can be disabled independently', async () => {
+  let clock = 0;
+  const frames = [];
+  const { api, client, callbacks, intervals } = await runtime({ now: () => clock, artworkRenderer: { async render(image, title, artists, options) { frames.push(options); return JSON.stringify(options); } } });
+  const action = key(); const entry = { action, settings: { showText: false } }; api.visible.set(action.id, entry);
+  client.data = { ...client.data, state: 'paused', title: 'Paused', position: 10000, duration: 120000 };
+  await api.refresh(); clock += 4000; await api.animate();
+  assert.equal(frames.at(-1).remainingMs, 110000); assert.equal(frames.at(-1).showText, false);
+  callbacks.settings({ action, payload: { settings: { showText: true, scrollText: false, showRemaining: false } } }); await api.refresh();
+  assert.equal(frames.at(-1).scrollText, false); assert.equal(frames.at(-1).remainingMs, undefined);
+  assert.ok(![...intervals.values()].some(timer => timer.period === 100));
+  client.snapshotError = new Error('offline'); await api.refresh(); const count = frames.length; await api.animate(); assert.equal(frames.length, count);
+  api.stop();
+});
+
+test('artwork defaults to one line and resets scrolling when its layout changes', async () => {
+  let clock = 1000;
+  const frames = [];
+  const { api, callbacks, client } = await runtime({ now: () => clock, artworkRenderer: { async render(image, title, artists, options) { frames.push(options); return JSON.stringify(options); } } });
+  const action = key(); api.visible.set(action.id, { action, settings: {} });
+  client.data = { ...client.data, title: 'Track', artists: 'Artist' };
+  await api.refresh(); assert.equal(frames.at(-1).captionLayout, 'compact');
+  clock += 5000; await api.animate(); assert.equal(frames.at(-1).elapsedMs, 5000);
+  callbacks.settings({ action, payload: { settings: { captionLayout: 'twoLines' } } });
+  await api.refresh();
+  assert.equal(frames.at(-1).captionLayout, 'twoLines'); assert.equal(frames.at(-1).elapsedMs, 0);
+  callbacks.settings({ action, payload: { settings: { captionLayout: 'invalid' } } });
+  await api.refresh(); assert.equal(frames.at(-1).captionLayout, 'compact');
+  assert.equal(client.calls.length, 0, 'Layout changes must not send playback commands');
+  api.stop();
+});
+
+test('slow animation frames are not queued and cannot overwrite a newer track', async () => {
+  const waiting = deferred(); let delayed = false;
+  const { api, client } = await runtime({ artworkRenderer: { render: (image, title) => delayed ? waiting.promise : Promise.resolve(title) } });
+  const action = key(); api.visible.set(action.id, { action, settings: {} }); client.data.title = 'Old'; await api.refresh();
+  delayed = true; const first = api.animate(); const second = api.animate(); assert.equal(first, second); await flush();
+  delayed = false; client.data.title = 'New'; await api.refresh(); waiting.resolve('Stale'); await first;
+  assert.equal(action.images.at(-1), 'New'); assert.ok(!action.images.includes('Stale')); api.stop();
 });

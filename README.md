@@ -26,6 +26,16 @@ Les multi-actions peuvent définir explicitement Lecture/Pause, Aléatoire activ
 
 ### État de la version
 
+La version 0.2.3 ajoute le défilement des titres et noms d’artistes trop longs sur **Lecture / Pause avec pochette**, ainsi qu’un compteur du temps restant en haut de la touche. Le texte revient progressivement au début, avec un ralentissement aux extrémités et jusqu’à dix images par seconde. Les textes courts restent immobiles. Le compteur se fige en pause et disparaît si la durée est inconnue. Les options **Faire défiler les titres et noms d’artistes longs** et **Afficher le temps restant du morceau** sont activées par défaut et peuvent être désactivées séparément; le compteur peut aussi s’afficher sans les légendes.
+
+**Lecture / Pause (icône)** et **Lecture / Pause avec pochette** contrôlent toutes deux la lecture. La pochette n’a pas de symbole permanent. Après un appui confirmé par le lecteur, un grand symbole s’affiche au centre pendant une seconde : ▶ quand la lecture reprend, ⏸ quand elle se met en pause. Le symbole disparaît progressivement, puis la pochette retrouve son affichage normal. Cette confirmation fonctionne aussi quand les légendes et le compteur sont masqués.
+
+**Favori** affiche un cœur plein quand le morceau est ajouté, et un cœur vide sinon. Les deux états gardent un fond noir.
+
+La pochette affiche par défaut une seule ligne **titre • artiste**, défilante si nécessaire. Son bandeau mesure 18 pixels de haut au lieu de 30, avec un dégradé transparent et un léger contour pour lire les lettres sans masquer autant la pochette. **Disposition du texte** permet de revenir à deux lignes; décocher **Afficher le titre et l’artiste sur la pochette** masque entièrement la légende. La lecture/pause et le compteur restent indépendants de ce choix.
+
+Le temps restant apparaît en haut à droite, en chiffres blancs gras avec un fin contour noir, sans rectangle de fond. La pochette reste visible autour des chiffres.
+
 Version 0.2.2 corrige les constats R01 à R13 : états des boutons synchronisés, multi-actions explicites, conservation des réglages, file de commandes limitée, erreurs localisées, légendes Unicode ajustées et pochettes téléchargées sans bloquer les mises à jour. Les identifiants des actions sont conservés. L’ouverture d’une playlist depuis un lien Spotify a été testée par l’utilisateur. Les tests couvrent Node 20 et 22, les deux langues et le SDK Elgato; la validation du paquet Elgato réussit. Les molettes nécessitent un Stream Deck +; leur fonctionnement physique reste à vérifier sur ce modèle.
 
 ## English
@@ -50,6 +60,16 @@ Multi Actions can explicitly set Play/Pause, Shuffle on/off, and Repeat off/cont
 
 ### Version status
 
+Version 0.2.3 adds scrolling for long titles and artist names on **Play / Pause with artwork**, plus a remaining-time counter at the top of the key. Text returns gradually to the beginning, easing at both ends with up to ten frames per second. Short text stays stationary. The counter freezes when paused and hides when duration is unknown. **Scroll long titles and artist names** and **Show the remaining track time** default to enabled and can be disabled separately; the timer can also appear without captions.
+
+**Play / Pause (icon)** and **Play / Pause with artwork** both control playback. Artwork has no permanent playback symbol. After a press is confirmed by the player, a large symbol appears in the center for one second: ▶ when playback resumes, ⏸ when it pauses. The symbol fades out and the cover returns to its normal display. This feedback also works when captions and the countdown are hidden.
+
+**Favorite** shows a filled heart when the track is saved and an outlined heart otherwise. Both states use a black background.
+
+Artwork defaults to one **title • artist** line, scrolling when needed. Its band is 18 pixels high instead of 30, using a transparent gradient and a thin text outline to keep more artwork visible. **Text layout** can switch back to two lines; unchecking **Show the title and artist on the artwork** hides the caption entirely. Playback controls and the countdown remain independent of this choice.
+
+Remaining time appears at the top right as bold white digits with a thin black outline and no background rectangle. The artwork remains visible around the digits.
+
 Version 0.2.2 addresses review findings R01–R13: synchronized button states, explicit Multi Actions, preserved settings, bounded command queue, localized errors, fitted Unicode captions and background artwork downloads. Existing action identifiers are preserved. A user has successfully tested opening a playlist from a Spotify link. Tests cover Node 20 and 22, both languages and the Elgato SDK; Elgato package validation passes. Dial controls require a Stream Deck + and still need a hardware test on that model.
 
 ## Development / Développement
@@ -72,6 +92,8 @@ node scripts/preview.mjs
 
 Open `http://127.0.0.1:4317/?lang=en` or `?lang=fr` to preview settings with a simulated Stream Deck connection. The preview does not send playback commands.
 
+Add `&action=nowplaying` to preview the scrolling and timer settings. Run `node scripts/artwork-preview.mjs` and open `http://127.0.0.1:4318/` for an animated preview at actual key size and twice that size. Its playback controls only affect the preview.
+
 The plugin communicates with the running Spotifast instance through its documented CLI. Artwork is fetched from approved Spotify image hosts. Authentication remains in Spotifast.
 
 This repository contains the controller source, icons and bilingual UI. It does not include personal Stream Deck profiles, Spotify credentials, local logs or machine-specific settings.
@@ -93,5 +115,5 @@ Pour publier une version, compiler, tester, valider et empaqueter le checkout du
 Before publishing, verify the release tag, matching versions, MIT license and clean checkout. CI also runs this check for version tags:
 
 ```sh
-npm run release:check -- v0.2.2
+npm run release:check -- v0.2.3
 ```

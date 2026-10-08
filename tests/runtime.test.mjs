@@ -87,7 +87,7 @@ test('artwork animation does not reapply its unchanged playback state', async ()
   let clock = 0;
   const { api, client } = await runtime({ now: () => clock, artworkRenderer: { async render(image, title, artists, options) { return String(options.elapsedMs); } } });
   const action = key(); api.visible.set(action.id, { action, settings: {} });
-  client.data = { ...client.data, state: 'playing', title: 'Long title' }; await api.refresh();
+  client.data = { ...client.data, state: 'playing', title: 'A very long track title' }; await api.refresh();
   const states = action.states.length;
   clock = 2000; await api.animate();
   assert.equal(action.images.at(-1), '2000'); assert.equal(action.states.length, states);

@@ -51,11 +51,13 @@ export function formatRemaining(milliseconds) {
   return '-' + (minutes >= 60 ? Math.floor(minutes / 60) + ':' + pad(minutes % 60) : minutes) + ':' + pad(seconds % 60);
 }
 function prepareLine(value, font, sizes, scrollText = false) {
-  let line = fitCaption(value, font, sizes);
-  if (scrollText && line.text !== normalized(value)) {
+  let line;
+  if (scrollText) {
     const text = normalized(value);
-    line = { text, size: line.size, width: widthOf(text, line.size, font) };
-  }
+    let size = sizes.maxSize;
+    while (size > sizes.minSize && widthOf(text, size, font) > TEXT_WIDTH) size = Math.max(sizes.minSize, size - 0.5);
+    line = { text, size, width: widthOf(text, size, font) };
+  } else line = fitCaption(value, font, sizes);
   if (supported(font, line.text) && line.text) {
     const outline = font.getPath(line.text, 0, 0, line.size), box = outline.getBoundingBox();
     return { ...line, left: box.x1, inkWidth: box.x2 - box.x1, path: outline.toPathData(2) };

@@ -26,7 +26,7 @@ Les multi-actions peuvent définir explicitement Lecture/Pause, Aléatoire activ
 
 ### État de la version
 
-La version 0.2.3 en préparation ajoute le défilement des titres et noms d’artistes trop longs sur **Lecture / Pause avec pochette**, ainsi qu’un compteur du temps restant en haut de la touche. Le texte revient progressivement au début, avec un ralentissement aux extrémités et jusqu’à dix images par seconde. Les textes courts restent immobiles. Le compteur se fige en pause et disparaît si la durée est inconnue. Les options **Faire défiler les titres et noms d’artistes longs** et **Afficher le temps restant du morceau** sont activées par défaut et peuvent être désactivées séparément; le compteur peut aussi s’afficher sans les légendes.
+La version 0.2.3 ajoute le défilement des titres et noms d’artistes trop longs sur **Lecture / Pause avec pochette**, ainsi qu’un compteur du temps restant en haut de la touche. Le texte revient progressivement au début, avec un ralentissement aux extrémités et jusqu’à dix images par seconde. Les textes courts restent immobiles. Le compteur se fige en pause et disparaît si la durée est inconnue. Les options **Faire défiler les titres et noms d’artistes longs** et **Afficher le temps restant du morceau** sont activées par défaut et peuvent être désactivées séparément; le compteur peut aussi s’afficher sans les légendes.
 
 **Lecture / Pause (icône)** et **Lecture / Pause avec pochette** contrôlent toutes deux la lecture. La pochette n’a pas de symbole permanent. Après un appui confirmé par le lecteur, un grand symbole s’affiche au centre pendant une seconde : ▶ quand la lecture reprend, ⏸ quand elle se met en pause. Le symbole disparaît progressivement, puis la pochette retrouve son affichage normal. Cette confirmation fonctionne aussi quand les légendes et le compteur sont masqués.
 
@@ -60,7 +60,7 @@ Multi Actions can explicitly set Play/Pause, Shuffle on/off, and Repeat off/cont
 
 ### Version status
 
-The upcoming 0.2.3 version adds scrolling for long titles and artist names on **Play / Pause with artwork**, plus a remaining-time counter at the top of the key. Text returns gradually to the beginning, easing at both ends with up to ten frames per second. Short text stays stationary. The counter freezes when paused and hides when duration is unknown. **Scroll long titles and artist names** and **Show the remaining track time** default to enabled and can be disabled separately; the timer can also appear without captions.
+Version 0.2.3 adds scrolling for long titles and artist names on **Play / Pause with artwork**, plus a remaining-time counter at the top of the key. Text returns gradually to the beginning, easing at both ends with up to ten frames per second. Short text stays stationary. The counter freezes when paused and hides when duration is unknown. **Scroll long titles and artist names** and **Show the remaining track time** default to enabled and can be disabled separately; the timer can also appear without captions.
 
 **Play / Pause (icon)** and **Play / Pause with artwork** both control playback. Artwork has no permanent playback symbol. After a press is confirmed by the player, a large symbol appears in the center for one second: ▶ when playback resumes, ⏸ when it pauses. The symbol fades out and the cover returns to its normal display. This feedback also works when captions and the countdown are hidden.
 
@@ -115,5 +115,5 @@ Pour publier une version, compiler, tester, valider et empaqueter le checkout du
 Before publishing, verify the release tag, matching versions, MIT license and clean checkout. CI also runs this check for version tags:
 
 ```sh
-npm run release:check -- v0.2.2
+npm run release:check -- v0.2.3
 ```

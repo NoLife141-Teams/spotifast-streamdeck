@@ -1,6 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { CommandQueue, Spotifast, commandFor } from '../src/core.mjs';
+import { execFile } from 'node:child_process';
+import { promisify } from 'node:util';
 const deferred = () => { let resolve; const promise = new Promise(ok => { resolve = ok; }); return { promise, resolve }; };
 const flush = () => new Promise(resolve => setImmediate(resolve));
 function client(queue = new CommandQueue()) {
@@ -41,6 +43,40 @@ test('R04: a full queue rejects excess work and reserves transport by evicting l
 
 test('command failures do not poison the queue', async () => {
   const queue = new CommandQueue(); const failed = queue.run(() => { throw new Error('failed'); }); const following = queue.run(() => 42); await assert.rejects(failed, /failed/); assert.equal(await following, 42);
+});
+
+test('status CLI timeouts release Pause promptly while writes retain their full budget', async () => {
+  const active = deferred(), calls = [], budgets = [];
+  const instance = new Spotifast({ executeFile: async (exe, args, options) => {
+    calls.push(args); budgets.push(options.timeout);
+    if (args[0] === 'now-playing') { await active.promise; throw Object.assign(new Error('status timed out'), { killed: true }); }
+    return { stdout: '' };
+  } });
+  instance.executable = async () => 'C:/Spotifast/spotifast.exe';
+  const snapshot = instance.snapshot(); const rejected = assert.rejects(snapshot, error => error.killed === true);
+  await flush();
+  const volume = instance.run(['volume-up', '5']), pause = instance.run(['pause']);
+  assert.deepEqual(calls, [['now-playing', '--raw']]);
+  active.resolve(); await rejected; await Promise.all([volume, pause]);
+  assert.deepEqual(calls, [['now-playing', '--raw'], ['pause'], ['volume-up', '5']]);
+  assert.deepEqual(budgets, [1000, 5000, 5000]);
+});
+
+test('a stalled isolated CLI child times out without preventing the next serialized write', async () => {
+  const execute = promisify(execFile), calls = [];
+  const instance = new Spotifast({ executeFile: (exe, args, options) => {
+    calls.push(args[0]);
+    // This test launches its own Node helper, never the actual Spotifast application.
+    return execute(process.execPath, ['-e', args[0] === 'now-playing' ? 'setTimeout(() => {}, 10000)' : 'process.stdout.write("ok")'], options);
+  } });
+  instance.executable = async () => 'unused-test-helper.exe';
+  const reading = instance.snapshot();
+  const rejected = assert.rejects(reading, error => error.killed === true);
+  await flush();
+  const pause = instance.run(['pause']);
+  await rejected;
+  assert.equal(await pause, 'ok');
+  assert.deepEqual(calls, ['now-playing', 'pause']);
 });
 
 test('changing executable cancels pending commands from the previous configuration', async () => {

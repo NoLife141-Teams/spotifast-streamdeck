@@ -36,6 +36,52 @@ async function runtime(options = {}) {
   return { api, client, sdk, callbacks, messages, warnings, errors, select, timeouts, intervals };
 }
 
+test('warm artwork refreshes render once and only a new key receives the cached cover', async () => {
+  let requests = 0;
+  const frames = [];
+  const { api, client } = await runtime({ artwork: { async get() { requests++; return 'cover'; } }, artworkRenderer: {
+    async render(image, title) { frames.push({ image, title }); return image || 'fallback'; }, hasScrollingText: async () => false
+  } });
+  client.data.artUrl = 'https://i.scdn.co/cover';
+  const first = key('nowplaying', 'first'); api.visible.set(first.id, { action: first, settings: {} });
+  await api.refresh(); await flush(); frames.length = 0;
+  for (let i = 0; i < 20; i++) { await api.refresh(); await flush(); }
+  assert.equal(frames.length, 20); assert.equal(requests, 1);
+  const firstWrites = first.images.length;
+  const added = key('nowplaying', 'added'); api.visible.set(added.id, { action: added, settings: {} });
+  frames.length = 0; await api.refresh(); await flush();
+  assert.equal(requests, 2); assert.equal(frames.length, 3, 'Two metadata renders, then only the new key receives the cover');
+  assert.equal(first.images.length, firstWrites); assert.equal(added.images.at(-1), 'cover'); api.stop();
+});
+
+test('artwork retries failures and expired entries without rerendering an unchanged image twice', async () => {
+  let requests = 0, image, fresh = false, renders = 0;
+  const { api, client } = await runtime({ artwork: {
+    async get() { requests++; return image; }, isFresh(url, value) { return fresh && value === image; }
+  }, artworkRenderer: { async render(value) { renders++; return value || 'fallback'; }, hasScrollingText: async () => false } });
+  const action = key(); api.visible.set(action.id, { action, settings: {} }); client.data.artUrl = 'https://i.scdn.co/cover';
+  await api.refresh(); await flush(); assert.equal(requests, 1); assert.equal(action.images.at(-1), 'fallback');
+  image = 'cover'; await api.refresh(); await flush(); assert.equal(requests, 2); assert.equal(action.images.at(-1), 'cover');
+  renders = 0; await api.refresh(); await flush(); assert.equal(requests, 3); assert.equal(renders, 1);
+  fresh = true; await api.refresh(); await flush(); assert.equal(requests, 3);
+  fresh = false; image = 'replacement'; renders = 0; await api.refresh(); await flush();
+  assert.equal(renders, 2); assert.equal(action.images.at(-1), 'replacement'); api.stop();
+});
+
+test('settings render visual changes locally and ignore identical or nonvisual settings', async () => {
+  const { api, client, callbacks } = await runtime();
+  const first = key('nowplaying', 'first'), other = key('nowplaying', 'other');
+  const entry = { action: first, settings: {} };
+  api.visible.set(first.id, entry); api.visible.set(other.id, { action: other, settings: {} });
+  await api.refresh(); const reads = client.reads, firstWrites = first.images.length, otherWrites = other.images.length;
+  callbacks.settings({ action: first, payload: { settings: { showText: true, scrollText: true, captionLayout: 'invalid', playlistUri: 'first' } } }); await flush();
+  assert.equal(client.reads, reads); assert.equal(first.images.length, firstWrites); assert.equal(entry.settings.playlistUri, 'first');
+  callbacks.settings({ action: first, payload: { settings: { showText: false } } }); await flush();
+  assert.equal(client.reads, reads); assert.equal(first.images.length, firstWrites + 1); assert.equal(other.images.length, otherWrites);
+  callbacks.settings({ action: first, payload: { settings: { showText: false } } }); await flush();
+  assert.equal(client.reads, reads); assert.equal(first.images.length, firstWrites + 1); api.stop();
+});
+
 test('labels follow English/French, including wake-up, without changing action settings', async () => {
   const { api, client, callbacks } = await runtime(); const action = key(); api.visible.set(action.id, { action, settings: {} });
   await api.refresh(); assert.equal(action.images.at(-1), 'caption:Aucun morceau||');

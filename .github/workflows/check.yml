@@ -12,7 +12,7 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  check:
+  plugin_checks:
     runs-on: windows-latest
     timeout-minutes: 15
     strategy:
@@ -43,3 +43,13 @@ jobs:
           path: dist/*.streamDeckPlugin
           if-no-files-found: error
           retention-days: 7
+  # Preserve the required "check" context while validating both supported runtimes.
+  check:
+    if: ${{ always() }}
+    needs: plugin_checks
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      - env:
+          PLUGIN_CHECKS_RESULT: ${{ needs.plugin_checks.result }}
+        run: test "$PLUGIN_CHECKS_RESULT" = "success"

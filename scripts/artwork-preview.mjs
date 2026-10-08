@@ -23,7 +23,8 @@ for (const [id,title,artists] of [
   ['perfect','Perfect','Kaley, LYON'],
   ['long','A very long song title that will not fit','Artist one, Artist two, Artist three'],
   ['french','Été à Montréal','Éléonore et François'],
-  ['wide','WWWWWWWWWWWW','WWWWWWWWWWWW']
+  ['wide','WWWWWWWWWWWW','WWWWWWWWWWWW'],
+  ['emoji','👨‍👩‍👧‍👦 🎸 🎵 ✨','音楽 · Éléonore 🎤']
 ]) {
   const image = await renderer.render(cover,title,artists);
   samples.set('/'+id+'.svg',Buffer.from(image.split(',')[1],'base64'));

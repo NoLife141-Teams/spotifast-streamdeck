@@ -1,0 +1,23 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Spotifast</title>
+<style>
+body{background:#2d2d2d;color:#eee;font:12px Arial,sans-serif;margin:16px}
+h2{font-size:17px;color:#a3e635;margin:0 0 12px}label{display:block;margin:14px 0 5px}
+input,select{box-sizing:border-box;width:100%;padding:8px;background:#202020;border:1px solid #555;border-radius:5px;color:#fff}
+input[type=checkbox]{width:auto}button{padding:8px 12px;margin:12px 5px 0 0;color:#fff;background:#444;border:1px solid #666;border-radius:5px;cursor:pointer}
+p{color:#ccc;line-height:1.5}#status{padding:10px;background:#222;border-left:3px solid #999;border-radius:3px;overflow-wrap:anywhere}
+small{display:block;color:#bbb;margin-top:5px;line-height:1.4}[hidden]{display:none!important}
+</style></head><body>
+<h2>Spotifast</h2>
+<label for="language" data-i18n="language">Language</label>
+<select id="language"><option value="auto" data-i18n="automatic">Follow Stream Deck</option><option value="en">English</option><option value="fr">Français</option></select>
+<p id="help"></p><div id="status" role="status" aria-live="polite">Checking connection…</div>
+<button id="open" data-i18n="open">Open Spotifast</button><button id="check" data-i18n="check">Check connection</button>
+<section id="playlist" hidden><label for="uri" data-i18n="playlistLabel">Playlist, album or track link</label><input id="uri" placeholder="https://open.spotify.com/playlist/…"><small data-i18n="playlistHint">Copy a Spotify link or use a spotify:playlist:… URI.</small></section>
+<section id="volume" hidden><label for="step" data-i18n="volumeLabel">Volume step (%)</label><input id="step" type="number" min="1" max="25" value="5"></section>
+<section id="text" hidden><label><input id="showText" type="checkbox" checked> <span data-i18n="showText">Show the title and artist on the artwork</span></label></section>
+<label for="exe" data-i18n="executableLabel">Spotifast location (optional)</label><input id="exe" data-i18n-placeholder="executablePlaceholder" placeholder="Automatic detection"><small data-i18n="executableHint">Applies to all buttons. Leave empty for the standard Windows installation.</small>
+<script src="i18n.js"></script><script src="settings.js"></script>
+</body></html>

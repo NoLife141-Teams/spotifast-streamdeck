@@ -1,0 +1,7 @@
+.local-backups/
+node_modules/
+build/
+dist/
+*.log
+.env
+.env.*

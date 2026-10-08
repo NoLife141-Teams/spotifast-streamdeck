@@ -1,0 +1,276 @@
+{
+  "$schema": "https://schemas.elgato.com/streamdeck/plugins/manifest.json",
+  "UUID": "rocks.spotifast.streamdeck",
+  "Name": "Spotifast",
+  "Version": "0.2.1.0",
+  "Author": "NoLife141-Teams",
+  "Description": "Local Spotifast controls: playback, artwork, favorites, playlists and volume.",
+  "Category": "Spotifast",
+  "CategoryIcon": "imgs/music",
+  "Icon": "imgs/music",
+  "CodePath": "bin/plugin.js",
+  "SDKVersion": 3,
+  "Software": {
+    "MinimumVersion": "6.9"
+  },
+  "OS": [
+    {
+      "Platform": "windows",
+      "MinimumVersion": "10"
+    }
+  ],
+  "Nodejs": {
+    "Version": "20"
+  },
+  "Actions": [
+    {
+      "UUID": "rocks.spotifast.streamdeck.playpause",
+      "Name": "Play / Pause",
+      "Icon": "imgs/play",
+      "Tooltip": "Spotifast: Play / Pause",
+      "PropertyInspectorPath": "ui/settings.html",
+      "Controllers": [
+        "Keypad"
+      ],
+      "States": [
+        {
+          "Image": "imgs/play",
+          "TitleAlignment": "bottom",
+          "FontSize": 11
+        },
+        {
+          "Image": "imgs/pause-active",
+          "TitleAlignment": "bottom",
+          "FontSize": 11
+        }
+      ]
+    },
+    {
+      "UUID": "rocks.spotifast.streamdeck.next",
+      "Name": "Next",
+      "Icon": "imgs/next",
+      "Tooltip": "Spotifast: Next",
+      "PropertyInspectorPath": "ui/settings.html",
+      "Controllers": [
+        "Keypad"
+      ],
+      "States": [
+        {
+          "Image": "imgs/next",
+          "TitleAlignment": "bottom",
+          "FontSize": 11
+        }
+      ]
+    },
+    {
+      "UUID": "rocks.spotifast.streamdeck.previous",
+      "Name": "Previous",
+      "Icon": "imgs/previous",
+      "Tooltip": "Spotifast: Previous",
+      "PropertyInspectorPath": "ui/settings.html",
+      "Controllers": [
+        "Keypad"
+      ],
+      "States": [
+        {
+          "Image": "imgs/previous",
+          "TitleAlignment": "bottom",
+          "FontSize": 11
+        }
+      ]
+    },
+    {
+      "UUID": "rocks.spotifast.streamdeck.nowplaying",
+      "Name": "Track and artwork",
+      "Icon": "imgs/music",
+      "Tooltip": "Spotifast: Track and artwork",
+      "PropertyInspectorPath": "ui/settings.html",
+      "Controllers": [
+        "Keypad"
+      ],
+      "States": [
+        {
+          "Image": "imgs/music",
+          "TitleAlignment": "bottom",
+          "FontSize": 11
+        }
+      ]
+    },
+    {
+      "UUID": "rocks.spotifast.streamdeck.volumeup",
+      "Name": "Volume +",
+      "Icon": "imgs/volumeup",
+      "Tooltip": "Spotifast: Volume +",
+      "PropertyInspectorPath": "ui/settings.html",
+      "Controllers": [
+        "Keypad"
+      ],
+      "States": [
+        {
+          "Image": "imgs/volumeup",
+          "TitleAlignment": "bottom",
+          "FontSize": 11
+        }
+      ]
+    },
+    {
+      "UUID": "rocks.spotifast.streamdeck.volumedown",
+      "Name": "Volume −",
+      "Icon": "imgs/volumedown",
+      "Tooltip": "Spotifast: Volume −",
+      "PropertyInspectorPath": "ui/settings.html",
+      "Controllers": [
+        "Keypad"
+      ],
+      "States": [
+        {
+          "Image": "imgs/volumedown",
+          "TitleAlignment": "bottom",
+          "FontSize": 11
+        }
+      ]
+    },
+    {
+      "UUID": "rocks.spotifast.streamdeck.mute",
+      "Name": "Mute",
+      "Icon": "imgs/mute",
+      "Tooltip": "Spotifast: Mute",
+      "PropertyInspectorPath": "ui/settings.html",
+      "Controllers": [
+        "Keypad"
+      ],
+      "States": [
+        {
+          "Image": "imgs/mute",
+          "TitleAlignment": "bottom",
+          "FontSize": 11
+        }
+      ]
+    },
+    {
+      "UUID": "rocks.spotifast.streamdeck.shuffle",
+      "Name": "Shuffle",
+      "Icon": "imgs/shuffle",
+      "Tooltip": "Spotifast: Shuffle",
+      "PropertyInspectorPath": "ui/settings.html",
+      "Controllers": [
+        "Keypad"
+      ],
+      "States": [
+        {
+          "Image": "imgs/shuffle",
+          "TitleAlignment": "bottom",
+          "FontSize": 11
+        },
+        {
+          "Image": "imgs/shuffle-active",
+          "TitleAlignment": "bottom",
+          "FontSize": 11
+        }
+      ]
+    },
+    {
+      "UUID": "rocks.spotifast.streamdeck.repeat",
+      "Name": "Repeat",
+      "Icon": "imgs/repeat",
+      "Tooltip": "Spotifast: Repeat",
+      "PropertyInspectorPath": "ui/settings.html",
+      "Controllers": [
+        "Keypad"
+      ],
+      "States": [
+        {
+          "Image": "imgs/repeat",
+          "TitleAlignment": "bottom",
+          "FontSize": 11
+        },
+        {
+          "Image": "imgs/repeat-active",
+          "TitleAlignment": "bottom",
+          "FontSize": 11
+        }
+      ]
+    },
+    {
+      "UUID": "rocks.spotifast.streamdeck.like",
+      "Name": "Favorite",
+      "Icon": "imgs/heart",
+      "Tooltip": "Spotifast: Favorite",
+      "PropertyInspectorPath": "ui/settings.html",
+      "Controllers": [
+        "Keypad"
+      ],
+      "States": [
+        {
+          "Image": "imgs/heart",
+          "TitleAlignment": "bottom",
+          "FontSize": 11
+        },
+        {
+          "Image": "imgs/heart-active",
+          "TitleAlignment": "bottom",
+          "FontSize": 11
+        }
+      ]
+    },
+    {
+      "UUID": "rocks.spotifast.streamdeck.playlist",
+      "Name": "Play a playlist",
+      "Icon": "imgs/playlist",
+      "Tooltip": "Spotifast: Play a playlist",
+      "PropertyInspectorPath": "ui/settings.html",
+      "Controllers": [
+        "Keypad"
+      ],
+      "States": [
+        {
+          "Image": "imgs/playlist",
+          "TitleAlignment": "bottom",
+          "FontSize": 11
+        }
+      ]
+    },
+    {
+      "UUID": "rocks.spotifast.streamdeck.open",
+      "Name": "Open Spotifast",
+      "Icon": "imgs/music",
+      "Tooltip": "Spotifast: Open Spotifast",
+      "PropertyInspectorPath": "ui/settings.html",
+      "Controllers": [
+        "Keypad"
+      ],
+      "States": [
+        {
+          "Image": "imgs/music",
+          "TitleAlignment": "bottom",
+          "FontSize": 11
+        }
+      ]
+    },
+    {
+      "UUID": "rocks.spotifast.streamdeck.volume",
+      "Name": "Volume (dial)",
+      "Icon": "imgs/volumeup",
+      "Tooltip": "Turn: volume. Press: mute. Tap: play/pause.",
+      "PropertyInspectorPath": "ui/settings.html",
+      "Controllers": [
+        "Encoder"
+      ],
+      "States": [
+        {
+          "Image": "imgs/volumeup",
+          "TitleAlignment": "bottom",
+          "FontSize": 11
+        }
+      ],
+      "Encoder": {
+        "layout": "$B1",
+        "TriggerDescription": {
+          "Rotate": "Adjust volume",
+          "Push": "Mute",
+          "Touch": "Play / Pause"
+        }
+      }
+    }
+  ]
+}

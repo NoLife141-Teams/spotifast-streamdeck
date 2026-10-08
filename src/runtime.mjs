@@ -86,8 +86,8 @@ export function createRuntime(streamDeck, {
     const current = () => started && visible.get(entry.action.id) === entry && revision === entry.renderRevision && snapshot === state && connected === online && config === configuration;
     const { action, settings } = entry;
     const artUrl = connected ? snapshot.artUrl : '';
-    if (entry.artUrl !== artUrl) { entry.artUrl = artUrl; entry.artImage = undefined; }
-    if (image && imageUrl === artUrl) entry.artImage = image;
+    if (entry.artUrl !== artUrl) { entry.artUrl = artUrl; entry.artImage = undefined; entry.artSampledAt = undefined; }
+    if (image && imageUrl === artUrl) { entry.artImage = image; entry.artSampledAt = now(); }
     const id = suffix(action);
     let title = '', picture, feedback, buttonState;
     if (!connected) {
@@ -129,8 +129,11 @@ export function createRuntime(streamDeck, {
       if (['volumeup', 'volumedown', 'mute'].includes(id)) title = snapshot.volume === null ? '' : snapshot.volume + '%';
       if (id === 'volume') feedback = { title: shortText(snapshot.title || t('volumeTitle'), 24), value: snapshot.volume === null ? '—' : snapshot.volume + '%', indicator: snapshot.volume ?? 0, icon: entry.artImage ?? 'imgs/volumeup.png' };
     }
-    const signature = JSON.stringify({ title, picture, feedback, buttonState });
-    if (!current() || entry.signature === signature) return;
+    // Keep image strings out of JSON serialization on every animation frame.
+    const signature = { title, picture, feedback: feedback && [feedback.title, feedback.value, feedback.indicator, feedback.icon], buttonState };
+    const previous = entry.signature;
+    if (!current() || (previous && previous.title === title && previous.picture === picture && previous.buttonState === buttonState &&
+      (previous.feedback === signature.feedback || (previous.feedback && signature.feedback && previous.feedback.every((value, index) => value === signature.feedback[index]))))) return;
     if (action.isKey()) {
       if (buttonState !== undefined && (entry.signature === undefined || entry.renderedState !== buttonState)) await action.setState(buttonState);
       if (!current()) return;
@@ -179,10 +182,18 @@ export function createRuntime(streamDeck, {
   }
   function requestArtwork() {
     const url = online && state?.artUrl;
-    if (!url || artworkRequests.has(url) || artworkRequests.size >= 4 || ![...visible.values()].some(entry => ['nowplaying', 'volume'].includes(suffix(entry.action)))) return;
+    const needsArtwork = entry => ['nowplaying', 'volume'].includes(suffix(entry.action)) &&
+      (entry.artUrl !== url || !entry.artImage || (artwork.isFresh ? !artwork.isFresh(url, entry.artImage) : now() - entry.artSampledAt >= 36e5));
+    if (!url || artworkRequests.has(url) || artworkRequests.size >= 4 || ![...visible.values()].some(needsArtwork)) return;
     const task = Promise.resolve().then(() => artwork.get(url)).then(async image => {
       if (!image || !online || state?.artUrl !== url) return;
-      await renderEntries([...visible.values()].filter(entry => ['nowplaying', 'volume'].includes(suffix(entry.action))), image, url);
+      const changed = [];
+      for (const entry of visible.values()) {
+        if (!['nowplaying', 'volume'].includes(suffix(entry.action))) continue;
+        if (entry.artUrl !== url || entry.artImage !== image) changed.push(entry);
+        else entry.artSampledAt = now();
+      }
+      await renderEntries(changed, image, url);
     }).catch(report).finally(() => artworkRequests.delete(url));
     artworkRequests.set(url, task);
   }
@@ -306,7 +317,15 @@ export function createRuntime(streamDeck, {
   });
   streamDeck.settings.onDidReceiveSettings(event => {
     const entry = visible.get(event.action.id);
-    if (entry) { entry.settings = event.payload.settings ?? {}; invalidate(entry); updateAnimationTimer(); refresh().catch(report); }
+    if (!entry) return;
+    const next = event.payload.settings ?? {};
+    const visual = settings => [settings.showText !== false, settings.scrollText !== false, settings.showRemaining !== false, settings.captionLayout === 'twoLines'];
+    const changed = suffix(entry.action) === 'nowplaying' && visual(entry.settings).some((value, index) => value !== visual(next)[index]);
+    entry.settings = next;
+    if (!changed) return;
+    invalidate(entry);
+    updateAnimationTimer();
+    render(entry).then(updateAnimationTimer).catch(report);
   });
   streamDeck.settings.onDidReceiveGlobalSettings(event => { configure(event.settings); refresh().catch(report); });
   streamDeck.actions.onKeyDown(event => {

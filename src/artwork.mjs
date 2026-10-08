@@ -90,13 +90,12 @@ function renderCaption(cover, layout, fonts, { elapsedMs = 0, remainingMs, playb
   const opacity = Math.round(Math.max(0, Math.min(1, Number.isFinite(feedbackOpacity) ? feedbackOpacity : 1)) * 100) / 100;
   const timerWidth = TEXT_WIDTH;
   const remaining = formatRemaining(remainingMs);
-  let time = prepareLine(remaining, fonts.regular, { maxSize: 9, minSize: 8.5, maxWidth: timerWidth });
+  let time = prepareLine(remaining, fonts.bold, { maxSize: 9, minSize: 8.5, maxWidth: timerWidth });
   // Keep every digit even if system fonts are unavailable or the track lasts hours.
   if (time.text !== remaining) {
     const width = Math.min(timerWidth, remaining.length * 5.5);
     time = { text: remaining, size: 8.5, width, inkWidth: width, left: 0 };
   }
-  const badgeWidth = Math.max(30, time.width + 8);
   const image = /^data:image\/(?:jpeg|png|webp);base64,[A-Za-z0-9+/=\r\n]+$/.test(cover || '') ?
     '<image x="0" y="0" width="72" height="72" preserveAspectRatio="xMidYMid slice" xlink:href="' + cover + '"/>' : '';
   const textTop = layout.compact ? 56 : 48;
@@ -110,7 +109,7 @@ function renderCaption(cover, layout, fonts, { elapsedMs = 0, remainingMs, playb
     '<rect width="72" height="72" fill="#202020"/>' + image +
     (feedback && opacity > 0 ? '<g id="playback-feedback" opacity="' + opacity + '"><rect x="20" y="20" width="32" height="32" rx="7" fill="#000" fill-opacity=".84"/>' +
       (playbackFeedback === 'paused' ? '<path id="playback-pause" d="M28 27h6v18h-6z M38 27h6v18h-6z" fill="#fff"/>' : '<path id="playback-play" d="M31 26l14 10-14 10z" fill="#fff"/>') + '</g>' : '') +
-    (remaining ? '<rect x="' + (68 - badgeWidth) + '" y="4" width="' + badgeWidth + '" height="14" rx="3" fill="#000" fill-opacity=".84"/>' + drawLine(time, 14, '#fff', 0, 68 - badgeWidth / 2) : '') +
+    (remaining ? '<g id="remaining-time"><g stroke="#000" stroke-width="1.2" stroke-linejoin="round">' + drawLine(time, 12, '#000', 0, 68 - time.inkWidth / 2) + '</g>' + drawLine(time, 12, '#fff', 0, 68 - time.inkWidth / 2) + '</g>' : '') +
     (layout.showText ? '<rect y="' + (textTop - 2) + '" width="72" height="' + (74 - textTop) + '" fill="url(#captionShade)"/>' +
     '<g clip-path="url(#caption)"><g stroke="#000" stroke-width=".35" stroke-linejoin="round">' + caption + '</g></g>' : '') + '</svg>';
 }

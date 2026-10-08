@@ -34,6 +34,8 @@ La version 0.2.3 en préparation ajoute le défilement des titres et noms d’ar
 
 La pochette affiche par défaut une seule ligne **titre • artiste**, défilante si nécessaire. Son bandeau mesure 18 pixels de haut au lieu de 30, avec un dégradé transparent et un léger contour pour lire les lettres sans masquer autant la pochette. **Disposition du texte** permet de revenir à deux lignes; décocher **Afficher le titre et l’artiste sur la pochette** masque entièrement la légende. La lecture/pause et le compteur restent indépendants de ce choix.
 
+Le temps restant apparaît en haut à droite, en chiffres blancs gras avec un fin contour noir, sans rectangle de fond. La pochette reste visible autour des chiffres.
+
 Version 0.2.2 corrige les constats R01 à R13 : états des boutons synchronisés, multi-actions explicites, conservation des réglages, file de commandes limitée, erreurs localisées, légendes Unicode ajustées et pochettes téléchargées sans bloquer les mises à jour. Les identifiants des actions sont conservés. L’ouverture d’une playlist depuis un lien Spotify a été testée par l’utilisateur. Les tests couvrent Node 20 et 22, les deux langues et le SDK Elgato; la validation du paquet Elgato réussit. Les molettes nécessitent un Stream Deck +; leur fonctionnement physique reste à vérifier sur ce modèle.
 
 ## English
@@ -65,6 +67,8 @@ The upcoming 0.2.3 version adds scrolling for long titles and artist names on **
 **Favorite** shows a filled heart when the track is saved and an outlined heart otherwise. Both states use a black background.
 
 Artwork defaults to one **title • artist** line, scrolling when needed. Its band is 18 pixels high instead of 30, using a transparent gradient and a thin text outline to keep more artwork visible. **Text layout** can switch back to two lines; unchecking **Show the title and artist on the artwork** hides the caption entirely. Playback controls and the countdown remain independent of this choice.
+
+Remaining time appears at the top right as bold white digits with a thin black outline and no background rectangle. The artwork remains visible around the digits.
 
 Version 0.2.2 addresses review findings R01–R13: synchronized button states, explicit Multi Actions, preserved settings, bounded command queue, localized errors, fitted Unicode captions and background artwork downloads. Existing action identifiers are preserved. A user has successfully tested opening a playlist from a Spotify link. Tests cover Node 20 and 22, both languages and the Elgato SDK; Elgato package validation passes. Dial controls require a Stream Deck + and still need a hardware test on that model.
 

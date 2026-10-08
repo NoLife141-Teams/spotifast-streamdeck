@@ -85,18 +85,21 @@ function drawLine(line, baseline, fill, offset = 0, center = SIZE / 2) {
     '<text x="0" y="0" font-family="Arial,sans-serif" font-size="' + line.size + '" textLength="' + line.width + '" lengthAdjust="spacingAndGlyphs" fill="' + fill + '">' + xml(line.text) + '</text>';
   return '<g transform="translate(' + x + ' ' + baseline + ')">' + glyphs + '</g>';
 }
-function renderCaption(cover, layout, fonts, { elapsedMs = 0, remainingMs, playbackFeedback, feedbackOpacity = 1 } = {}) {
-  const feedback = ['playing', 'paused'].includes(playbackFeedback);
-  const opacity = Math.round(Math.max(0, Math.min(1, Number.isFinite(feedbackOpacity) ? feedbackOpacity : 1)) * 100) / 100;
-  const timerWidth = TEXT_WIDTH;
-  const remaining = formatRemaining(remainingMs);
-  let time = prepareLine(remaining, fonts.bold, { maxSize: 9, minSize: 8.5, maxWidth: timerWidth });
+function prepareRemaining(remaining, font) {
+  let time = prepareLine(remaining, font, { maxSize: 9, minSize: 8.5, maxWidth: TEXT_WIDTH });
   // Keep every digit even if system fonts are unavailable or the track lasts hours.
   if (time.text !== remaining) {
-    const width = Math.min(timerWidth, remaining.length * 5.5);
+    const width = Math.min(TEXT_WIDTH, remaining.length * 5.5);
     time = { text: remaining, size: 8.5, width, inkWidth: width, left: 0 };
   }
-  const image = /^data:image\/(?:jpeg|png|webp);base64,[A-Za-z0-9+/=\r\n]+$/.test(cover || '') ?
+  return time;
+}
+function renderCaption(cover, layout, fonts, { elapsedMs = 0, remainingMs, playbackFeedback, feedbackOpacity = 1 } = {}, prepared = {}) {
+  const feedback = ['playing', 'paused'].includes(playbackFeedback);
+  const opacity = Math.round(Math.max(0, Math.min(1, Number.isFinite(feedbackOpacity) ? feedbackOpacity : 1)) * 100) / 100;
+  const remaining = formatRemaining(remainingMs);
+  const time = prepared.time ?? prepareRemaining(remaining, fonts.bold);
+  const image = (prepared.validCover ?? /^data:image\/(?:jpeg|png|webp);base64,[A-Za-z0-9+/=\r\n]+$/.test(cover || '')) ?
     '<image x="0" y="0" width="72" height="72" preserveAspectRatio="xMidYMid slice" xlink:href="' + cover + '"/>' : '';
   const textTop = layout.compact ? 56 : 48;
   const caption = layout.compact ? drawLine(layout.combined, 66, '#fff', scrollOffset(layout.combined.width, elapsedMs)) :
@@ -121,6 +124,9 @@ export class ArtworkRenderer {
   fallback;
   cache = new Map();
   layouts = new Map();
+  covers = new Map();
+  counters = new Map();
+  nextCoverId = 0;
   constructor({ loadFonts = loadSystemFonts, fallbackPath = path.join(process.cwd(), 'imgs', 'music.png') } = {}) {
     this.fonts = Promise.resolve().then(loadFonts).catch(() => ({}));
     this.fallbackPath = fallbackPath;
@@ -147,9 +153,22 @@ export class ArtworkRenderer {
       cover = await this.fallback;
     }
     const { fonts, layoutKey, layout } = await this.layoutFor(title, artists, options);
-    const key = JSON.stringify([cover, layoutKey, layout.showText ? scrollOffset((layout.combined ?? layout.track).width, options.elapsedMs) : 0, layout.showText && !layout.compact ? scrollOffset(layout.artist.width, options.elapsedMs) : 0, formatRemaining(options.remainingMs), options.playbackFeedback, Math.round((options.feedbackOpacity ?? 1) * 100) / 100]);
+    let preparedCover = this.covers.get(cover);
+    if (!preparedCover) {
+      preparedCover = { id: ++this.nextCoverId, validCover: /^data:image\/(?:jpeg|png|webp);base64,[A-Za-z0-9+/=\r\n]+$/.test(cover || '') };
+      this.covers.set(cover, preparedCover);
+      while (this.covers.size > 8) this.covers.delete(this.covers.keys().next().value);
+    }
+    const remaining = formatRemaining(options.remainingMs);
+    const key = JSON.stringify([preparedCover.id, layoutKey, layout.showText ? scrollOffset((layout.combined ?? layout.track).width, options.elapsedMs) : 0, layout.showText && !layout.compact ? scrollOffset(layout.artist.width, options.elapsedMs) : 0, remaining, options.playbackFeedback, Math.round((options.feedbackOpacity ?? 1) * 100) / 100]);
     if (this.cache.has(key)) return this.cache.get(key);
-    const svg = renderCaption(cover, layout, fonts, options);
+    let time = this.counters.get(remaining);
+    if (!time) {
+      time = prepareRemaining(remaining, fonts.bold);
+      this.counters.set(remaining, time);
+      while (this.counters.size > 64) this.counters.delete(this.counters.keys().next().value);
+    }
+    const svg = renderCaption(cover, layout, fonts, options, { ...preparedCover, time });
     const image = 'data:image/svg+xml;base64,' + Buffer.from(svg).toString('base64');
     this.cache.set(key, image);
     while (this.cache.size > 8) this.cache.delete(this.cache.keys().next().value);

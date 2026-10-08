@@ -4,6 +4,7 @@ import {execFile, spawn} from 'node:child_process';
 import {promisify} from 'node:util';
 import {access} from 'node:fs/promises';
 import path from 'node:path';
+import { compactArtwork } from './compact-artwork.mjs';
 
 class LocalizedError extends Error {
   constructor(messageKey) { super(translations.createTranslator('en')(messageKey)); this.messageKey = messageKey; }
@@ -191,13 +192,42 @@ function isArtworkUrl(value) {
 }
 var ArtworkCache = class {
   cache = /* @__PURE__ */ new Map();
-  constructor(fetcher = fetch) {
+  pending = new Map();
+  bytes = 0;
+  constructor(fetcher = fetch, { maxEntries = 8, maxBytes = 1024 * 1024, now = Date.now } = {}) {
+    if (!Number.isSafeInteger(maxEntries) || maxEntries < 0 || !Number.isSafeInteger(maxBytes) || maxBytes < 0) throw new RangeError('Invalid artwork cache budget');
     this.fetcher = fetcher;
+    this.maxEntries = maxEntries;
+    this.maxBytes = maxBytes;
+    this.now = now;
+  }
+  isFresh(url, value) {
+    const cached = this.cache.get(url);
+    return !!value && cached?.value === value && cached.expires > this.now();
+  }
+  remember(url, value) {
+    const previous = this.cache.get(url);
+    if (previous) { this.bytes -= previous.bytes; this.cache.delete(url); }
+    const bytes = value ? Buffer.byteLength(value) : 0;
+    if (this.maxEntries < 1 || bytes > this.maxBytes) return;
+    this.cache.set(url, { value, bytes, expires: this.now() + (value ? 36e5 : 3e4) });
+    this.bytes += bytes;
+    while (this.cache.size > this.maxEntries || this.bytes > this.maxBytes) {
+      const oldest = this.cache.keys().next().value;
+      this.bytes -= this.cache.get(oldest).bytes;
+      this.cache.delete(oldest);
+    }
   }
   async get(url2) {
     if (!isArtworkUrl(url2)) return void 0;
     const cached2 = this.cache.get(url2);
-    if (cached2 && cached2.expires > Date.now()) return cached2.value;
+    if (cached2 && cached2.expires > this.now()) return cached2.value;
+    if (this.pending.has(url2)) return this.pending.get(url2);
+    const task = this.load(url2).finally(() => this.pending.delete(url2));
+    this.pending.set(url2, task);
+    return task;
+  }
+  async load(url2) {
     let value;
     try {
       const response = await this.fetcher(url2, { signal: AbortSignal.timeout(4e3), redirect: "error" });
@@ -217,11 +247,11 @@ var ArtworkCache = class {
         }
         chunks.push(part.value);
       }
-      value = `data:${type};base64,${Buffer.concat(chunks).toString("base64")}`;
+      const compact = await compactArtwork(Buffer.concat(chunks), type);
+      value = `data:${compact.contentType};base64,${compact.bytes.toString("base64")}`;
     } catch {
     }
-    this.cache.set(url2, { value, expires: Date.now() + (value ? 36e5 : 3e4) });
-    while (this.cache.size > 8) this.cache.delete(this.cache.keys().next().value);
+    this.remember(url2, value);
     return value;
   }
 };

@@ -28,6 +28,8 @@ Les lectures de statut sont espacées de 1,5 seconde après la fin de la lecture
 
 ### État de la version
 
+La version **0.2.5 bêta** réduit les calculs répétitifs du rendu, compacte les pochettes en 144 × 144 et espace les tentatives hors ligne. Les lectures d'état restent réactives et s'arrêtent sans touche visible. Le cache d'images est borné à huit entrées et 1 Mio; l'installateur inclut les bibliothèques natives nécessaires. Les trois améliorations sont validées ensemble par 96 tests sur Node 20 et 22. Les réglages et les identifiants des actions sont conservés.
+
 La version 0.2.4 fiabilise Lecture/Pause avec pochette dans les multi-actions, vérifie les liens Spotify pendant la saisie et adapte la fréquence de l’animation au contenu de chaque touche. Le compteur affiche sa dernière valeur avant l’arrêt de l’animation. Les identifiants des actions et les réglages sont conservés. Les trois améliorations ont fait l’objet de revues indépendantes; les tests couvrent leurs interactions.
 
 La version 0.2.3 ajoute le défilement des titres et noms d’artistes trop longs sur **Lecture / Pause avec pochette**, ainsi qu’un compteur du temps restant en haut de la touche. Le texte revient progressivement au début, avec un ralentissement aux extrémités et jusqu’à dix images par seconde. Les textes courts restent immobiles. Le compteur se fige en pause et disparaît si la durée est inconnue. Les options **Faire défiler les titres et noms d’artistes longs** et **Afficher le temps restant du morceau** sont activées par défaut et peuvent être désactivées séparément; le compteur peut aussi s’afficher sans les légendes.
@@ -67,6 +69,8 @@ Multi Actions can explicitly set Play/Pause with either the icon key or the artw
 Status reads wait 1.5 seconds after the previous read completes, without catch-up polling when Spotifast slows down. After failures, retries wait 3, 6, 15 and then 30 seconds. A command, configuration change or wake-up requests a fresh check without waiting for that delay; successful commands refresh status after 250 ms. Status CLI processes have a one-second execution timeout; writes retain five seconds and remain serialized. No automatic status reads run without a visible Spotifast action.
 
 ### Version status
+
+Version **0.2.5 beta** reduces repeated rendering work, compacts artwork to 144 × 144 and spaces out offline retries. Status reads stay responsive and stop when no key is visible. Encoded image storage is bounded to eight entries and 1 MiB; the installer includes the required native libraries. All three improvements are validated together by 96 tests on Node 20 and 22. Existing settings and action identifiers are preserved.
 
 Version 0.2.4 makes artwork Play/Pause reliable in Multi Actions, checks Spotify links as you type and adapts animation scheduling to each key’s content. The countdown renders its final value before animation stops. Action identifiers and settings are preserved. All three improvements received independent reviews, and tests cover their interactions.
 
@@ -146,5 +150,5 @@ Pour publier une version, compiler, tester, valider et empaqueter le checkout du
 Before publishing, verify the release tag, matching versions, MIT license and clean checkout. CI also runs this check for version tags:
 
 ```sh
-npm run release:check -- v0.2.4
+npm run release:check -- v0.2.5
 ```

@@ -53,7 +53,7 @@ export function createRuntime(streamDeck, {
       playbackRequest = undefined;
       return;
     }
-    if (snapshot.state === request.before || !['playing', 'paused'].includes(snapshot.state)) return;
+    if (snapshot.state === request.before || !['playing', 'paused'].includes(snapshot.state) || (request.target && snapshot.state !== request.target)) return;
     playbackRequest = undefined;
     for (const entry of request.entries) {
       if (visible.get(entry.action.id) === entry) showPlaybackFeedback(entry, snapshot.state, snapshot);
@@ -204,6 +204,7 @@ export function createRuntime(streamDeck, {
         resetPlaybackFeedback();
         request = playbackRequest = {
           before: state?.state, track: state?.title ? trackKey(state) : undefined, accepted: false,
+          target: args[0] === 'play' ? 'playing' : args[0] === 'pause' ? 'paused' : undefined,
           entries: [...visible.values()].filter(entry => suffix(entry.action) === 'nowplaying')
         };
         updateAnimationTimer();

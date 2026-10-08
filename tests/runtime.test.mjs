@@ -194,6 +194,24 @@ test('external changes, failed commands, expired confirmations and configuration
   api.stop();
 });
 
+test('explicit playback commands only confirm their requested state', async () => {
+  for (const [command, target, opposite] of [['play', 'playing', 'paused'], ['pause', 'paused', 'playing']]) {
+    const { api, client } = await runtime({ artworkRenderer: { async render(image, title, artists, options) { return JSON.stringify(options); } } });
+    const artwork = key(); api.visible.set(artwork.id, { action: artwork, settings: {} });
+    const transport = key('playpause');
+    const frame = () => JSON.parse(artwork.images.at(-1));
+    client.data = { ...client.data, title: 'Track', state: target }; await api.refresh();
+    await api.perform({ action: transport }, [command]);
+    client.data.state = opposite; await api.refresh();
+    assert.equal(frame().playbackFeedback, undefined, 'An external change away from the requested state must not confirm the command');
+    await api.perform({ action: transport }, [command]);
+    await api.refresh(); assert.equal(frame().playbackFeedback, undefined, 'Command acceptance must still wait for its requested playback state');
+    client.data.state = target; await api.refresh();
+    assert.equal(frame().playbackFeedback, target, 'The matching state change must confirm the explicit command');
+    api.stop();
+  }
+});
+
 test('rapid presses, profile changes and new tracks cannot replay an old playback confirmation', async () => {
   let clock = 0;
   const { api, client, callbacks, timeouts } = await runtime({ now: () => clock, artworkRenderer: { async render(image, title, artists, options) { return JSON.stringify(options); } } });

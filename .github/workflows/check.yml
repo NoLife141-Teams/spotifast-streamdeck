@@ -12,26 +12,44 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  check:
+  plugin_checks:
     runs-on: windows-latest
     timeout-minutes: 15
+    strategy:
+      matrix:
+        node: [20, 22]
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+          fetch-depth: 0
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
-          node-version: 22
+          node-version: ${{ matrix.node }}
           cache: npm
       - run: npm ci
       - run: npm audit --audit-level=high
       - run: npm run build
       - run: npm test
       - run: npm run validate
+      - if: startsWith(github.ref, 'refs/tags/v')
+        env:
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: npm run release:check -- "$env:RELEASE_TAG"
       - run: npm run pack
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
-          name: spotifast-streamdeck
+          name: spotifast-streamdeck-node-${{ matrix.node }}
           path: dist/*.streamDeckPlugin
           if-no-files-found: error
           retention-days: 7
+  # Preserve the required "check" context while validating both supported runtimes.
+  check:
+    if: ${{ always() }}
+    needs: plugin_checks
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      - env:
+          PLUGIN_CHECKS_RESULT: ${{ needs.plugin_checks.result }}
+        run: test "$PLUGIN_CHECKS_RESULT" = "success"

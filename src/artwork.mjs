@@ -6,7 +6,7 @@ const SIZE = 72;
 const TEXT_WIDTH = 60;
 const segments = new Intl.Segmenter(undefined, { granularity: 'grapheme' });
 const xml = value => String(value).replace(/[&<>"']/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&apos;' }[char]));
-const normalized = value => String(value ?? '').normalize('NFC').replace(/\s+/g, ' ').trim();
+const normalized = value => String(value ?? '').normalize('NFC').replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F]/g, '').replace(/\s+/g, ' ').trim();
 async function loadSystemFonts() {
   const directory = path.join(process.env.WINDIR || 'C:\\Windows', 'Fonts');
   const load = async name => {
@@ -24,7 +24,7 @@ function widthOf(text, size, font) {
     const box = font.getPath(text, 0, 0, size).getBoundingBox();
     return Math.max(font.getAdvanceWidth(text, size), box.x2 - box.x1);
   }
-  return Array.from(segments.segment(text)).length * size;
+  return Array.from(segments.segment(text), ({ segment }) => supported(font, segment) ? font.getAdvanceWidth(segment, size) : 2 * size).reduce((sum, width) => sum + width, 0);
 }
 export function fitCaption(value, font, { maxSize = 10, minSize = 8.5, maxWidth = TEXT_WIDTH } = {}) {
   const original = normalized(value);
@@ -45,7 +45,7 @@ function drawLine(line, font, baseline, fill) {
     const d = font.getPath(line.text, x, baseline, line.size).toPathData(2);
     return '<path fill="' + fill + '" d="' + d + '"/>';
   }
-  return '<text x="36" y="' + baseline + '" text-anchor="middle" font-family="Arial,sans-serif" font-size="' + line.size + '" fill="' + fill + '">' + xml(line.text) + '</text>';
+  return '<text x="36" y="' + baseline + '" text-anchor="middle" font-family="Arial,sans-serif" font-size="' + line.size + '" textLength="' + line.width + '" lengthAdjust="spacingAndGlyphs" fill="' + fill + '">' + xml(line.text) + '</text>';
 }
 export function captionSvg(cover, title, artists, fonts = {}) {
   const track = fitCaption(title, fonts.bold, { maxSize: 10, minSize: 9 });

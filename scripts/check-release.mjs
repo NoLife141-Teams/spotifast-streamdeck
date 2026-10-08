@@ -1,0 +1,16 @@
+import { execFileSync } from 'node:child_process';
+import { readFile } from 'node:fs/promises';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
+const git = args => execFileSync('git', args, { cwd: root, encoding: 'utf8', windowsHide: true, shell: false }).trim();
+const metadata = JSON.parse(await readFile(path.join(root, 'package.json'), 'utf8'));
+const lock = JSON.parse(await readFile(path.join(root, 'package-lock.json'), 'utf8'));
+const manifest = JSON.parse(await readFile(path.join(root, 'build/rocks.spotifast.streamdeck.sdPlugin/manifest.json'), 'utf8'));
+const tag = process.argv[2] || 'v' + metadata.version;
+if (tag !== 'v' + metadata.version || lock.version !== metadata.version || lock.packages[''].version !== metadata.version || manifest.Version !== metadata.version + '.0') throw new Error('Release versions differ');
+if (git(['rev-parse', 'HEAD']) !== git(['rev-parse', tag + '^{commit}'])) throw new Error('Build must run from the release tag');
+if (git(['status', '--porcelain'])) throw new Error('Release checkout must be clean');
+const license = await readFile(path.join(root, 'LICENSE'), 'utf8');
+if (metadata.license !== 'MIT' || license !== await readFile(path.join(root, 'build/rocks.spotifast.streamdeck.sdPlugin/LICENSE'), 'utf8')) throw new Error('Release license is missing or differs');
+console.log('Verified release ' + tag + ' at ' + git(['rev-parse', 'HEAD']));

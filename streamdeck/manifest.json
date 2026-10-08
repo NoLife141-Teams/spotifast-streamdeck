@@ -2,7 +2,7 @@
   "$schema": "https://schemas.elgato.com/streamdeck/plugins/manifest.json",
   "UUID": "rocks.spotifast.streamdeck",
   "Name": "Spotifast",
-  "Version": "0.2.1.0",
+  "Version": "0.2.2.0",
   "Author": "NoLife141-Teams",
   "Description": "Local Spotifast controls: playback, artwork, favorites, playlists and volume.",
   "Category": "Spotifast",
@@ -43,7 +43,8 @@
           "TitleAlignment": "bottom",
           "FontSize": 11
         }
-      ]
+      ],
+      "DisableAutomaticStates": true
     },
     {
       "UUID": "rocks.spotifast.streamdeck.next",
@@ -167,7 +168,8 @@
           "TitleAlignment": "bottom",
           "FontSize": 11
         }
-      ]
+      ],
+      "DisableAutomaticStates": true
     },
     {
       "UUID": "rocks.spotifast.streamdeck.repeat",
@@ -189,7 +191,8 @@
           "TitleAlignment": "bottom",
           "FontSize": 11
         }
-      ]
+      ],
+      "DisableAutomaticStates": true
     },
     {
       "UUID": "rocks.spotifast.streamdeck.like",
@@ -211,7 +214,9 @@
           "TitleAlignment": "bottom",
           "FontSize": 11
         }
-      ]
+      ],
+      "DisableAutomaticStates": true,
+      "SupportedInMultiActions": false
     },
     {
       "UUID": "rocks.spotifast.streamdeck.playlist",

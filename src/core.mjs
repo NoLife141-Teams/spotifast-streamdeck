@@ -47,7 +47,14 @@ function spotifyUri(value) {
   }
   throw new LocalizedError("invalidUri");
 }
-function commandFor(id, settings2 = {}, ticks) {
+function commandFor(id, settings2 = {}, ticks, desiredState) {
+  if (desiredState !== undefined) {
+    if (![0, 1].includes(desiredState)) throw new LocalizedError('unknownAction');
+    if (id === 'playpause') return [desiredState ? 'play' : 'pause'];
+    if (id === 'shuffle') return ['shuffle', desiredState ? 'on' : 'off'];
+    if (id === 'repeat') return ['repeat', desiredState ? 'context' : 'off'];
+    if (id === 'like') throw new LocalizedError('unsupportedMultiAction');
+  }
   const simple = { playpause: "play-pause", nowplaying: "play-pause", next: "next", previous: "previous", mute: "mute", shuffle: "shuffle", repeat: "repeat", like: "like", open: "show" };
   if (simple[id]) return [simple[id]];
   if (id === "playlist") return ["play-uri", spotifyUri(settings2.uri)];
@@ -59,21 +66,66 @@ function commandFor(id, settings2 = {}, ticks) {
   throw new LocalizedError("unknownAction");
 }
 var CommandQueue = class {
-  tail = Promise.resolve();
-  run(job) {
-    const next = this.tail.then(job);
-    this.tail = next.catch(() => {
-    });
-    return next;
+  pending = [];
+  active;
+  scheduled = false;
+  constructor({ now = Date.now, maxPending = 32 } = {}) {
+    this.now = now;
+    this.maxPending = maxPending;
+  }
+  run(job, { key, priority = 0, maxWait = 5000, data, merge, dedupe = false } = {}) {
+    const duplicate = dedupe && [this.active, ...this.pending].find(task => task?.key === key);
+    if (duplicate) return duplicate.promise;
+    const previous = this.pending.at(-1);
+    if (merge && previous?.key === key && this.now() <= previous.expires) {
+      merge(previous.data, data);
+      return previous.promise;
+    }
+    if (this.pending.length >= this.maxPending) {
+      let lowest = 0;
+      for (let i = 1; i < this.pending.length; i++) if (this.pending[i].priority < this.pending[lowest].priority) lowest = i;
+      if (priority <= this.pending[lowest].priority) return Promise.reject(new LocalizedError('commandQueueBusy'));
+      this.pending.splice(lowest, 1)[0].reject(new LocalizedError('commandExpired'));
+    }
+    let resolve, reject;
+    const promise = new Promise((ok, fail) => { resolve = ok; reject = fail; });
+    this.pending.push({ job, key, priority, data, promise, resolve, reject, expires: this.now() + maxWait });
+    if (!this.active && !this.scheduled) {
+      this.scheduled = true;
+      queueMicrotask(() => { this.scheduled = false; this.drain(); });
+    }
+    return promise;
+  }
+  async drain() {
+    if (this.active) return;
+    while (this.pending.length) {
+      let index = 0;
+      for (let i = 1; i < this.pending.length; i++) if (this.pending[i].priority > this.pending[index].priority) index = i;
+      const task = this.pending.splice(index, 1)[0];
+      this.active = task;
+      try {
+        if (this.now() > task.expires) throw new LocalizedError('commandExpired');
+        task.resolve(await task.job(task.data));
+      } catch (error) { task.reject(error); }
+      this.active = undefined;
+    }
+  }
+  cancelPending() {
+    for (const task of this.pending.splice(0)) task.reject(new LocalizedError('commandExpired'));
   }
 };
 var execute = promisify(execFile);
 var Spotifast = class {
-  queue = new CommandQueue();
   customPath = "";
   cachedPath;
+  constructor({ queue = new CommandQueue(), executeFile = execute } = {}) {
+    this.queue = queue;
+    this.executeFile = executeFile;
+  }
   configure(customPath = "") {
-    this.customPath = String(customPath).trim();
+    const next = String(customPath).trim();
+    if (this.customPath !== next) this.queue.cancelPending();
+    this.customPath = next;
     this.cachedPath = void 0;
   }
   async executable() {
@@ -95,11 +147,21 @@ var Spotifast = class {
     throw new LocalizedError("executableMissing");
   }
   run(args) {
-    return this.queue.run(async () => {
+    const volume = ['volume-up', 'volume-down'].includes(args[0]);
+    const snapshot = args[0] === 'now-playing';
+    const data = { args: [...args] };
+    const transport = ['play', 'pause', 'play-pause', 'mute', 'show'].includes(args[0]);
+    const options = { data, priority: snapshot ? -10 : volume ? 0 : transport ? 20 : 10, maxWait: volume ? 2500 : 5000 };
+    if (volume) {
+      options.key = args[0];
+      options.merge = (previous, next) => { previous.args[1] = String(Math.min(100, Number(previous.args[1]) + Number(next.args[1]))); };
+    }
+    if (snapshot) { options.key = 'snapshot'; options.dedupe = true; }
+    return this.queue.run(async ({ args: queuedArgs }) => {
       const exe = await this.executable();
-      const { stdout } = await execute(exe, args, { windowsHide: true, timeout: 5e3, maxBuffer: 1024 * 1024, encoding: "utf8", shell: false });
+      const { stdout } = await this.executeFile(exe, queuedArgs, { windowsHide: true, timeout: 5e3, maxBuffer: 1024 * 1024, encoding: "utf8", shell: false });
       return stdout;
-    });
+    }, options);
   }
   async snapshot() {
     return parseNowPlaying(await this.run(["now-playing", "--raw"]));

@@ -22,9 +22,11 @@ La fenêtre de réglages suit la langue de Stream Deck. Le choix **Langue → En
 
 La détection automatique couvre l’installation Windows standard. Un emplacement personnalisé de `spotifast.exe` peut être indiqué dans les réglages.
 
+Les multi-actions peuvent définir explicitement Lecture/Pause, Aléatoire activé/désactivé et Répétition désactivée/contexte. Favori reste disponible comme touche, mais est exclu des multi-actions. Les commandes en attente sont limitées et les rotations proches dans le même sens sont regroupées.
+
 ### État de la version
 
-Version 0.2.1 : texte du titre et de l’artiste ajusté à la touche, anglais et français, correction de la communication de la fenêtre de réglages et conservation des identifiants des actions existantes. L’ouverture d’une playlist depuis un lien Spotify a été testée par l’utilisateur. Les deux langues, les réglages et les commandes ont des tests automatisés; la validation du paquet Elgato réussit. Les molettes nécessitent un Stream Deck +; leur fonctionnement physique reste à vérifier sur ce modèle.
+Version 0.2.2 corrige les constats R01 à R13 : états des boutons synchronisés, multi-actions explicites, conservation des réglages, file de commandes limitée, erreurs localisées, légendes Unicode ajustées et pochettes téléchargées sans bloquer les mises à jour. Les identifiants des actions sont conservés. L’ouverture d’une playlist depuis un lien Spotify a été testée par l’utilisateur. Les tests couvrent Node 20 et 22, les deux langues et le SDK Elgato; la validation du paquet Elgato réussit. Les molettes nécessitent un Stream Deck +; leur fonctionnement physique reste à vérifier sur ce modèle.
 
 ## English
 
@@ -44,9 +46,11 @@ Settings follow the Stream Deck language. **Language → English / Français** c
 
 Automatic detection supports the standard Windows installation. You can set a custom `spotifast.exe` location in the settings.
 
+Multi Actions can explicitly set Play/Pause, Shuffle on/off, and Repeat off/context. Favorite remains available as a key but is excluded from Multi Actions. Pending commands are bounded and nearby rotations in the same direction are combined.
+
 ### Version status
 
-Version 0.2.1 fits the title and artist inside the key and includes English and French, fixes property-inspector messaging, and preserves existing action identifiers. A user has successfully tested opening a playlist from a Spotify link. Automated tests cover both languages, settings and commands; Elgato package validation passes. Dial controls require a Stream Deck + and still need a hardware test on that model.
+Version 0.2.2 addresses review findings R01–R13: synchronized button states, explicit Multi Actions, preserved settings, bounded command queue, localized errors, fitted Unicode captions and background artwork downloads. Existing action identifiers are preserved. A user has successfully tested opening a playlist from a Spotify link. Tests cover Node 20 and 22, both languages and the Elgato SDK; Elgato package validation passes. Dial controls require a Stream Deck + and still need a hardware test on that model.
 
 ## Development / Développement
 
@@ -81,3 +85,13 @@ Copyright (c) 2026 NoLife141-Teams.
 Ce projet est distribué sous la [licence MIT](LICENSE). La licence du projet et les avis de licence des dépendances sont inclus dans le paquet.
 
 This project is distributed under the [MIT license](LICENSE). The project license and dependency license notices are included in the installer.
+
+Release a new version from its own verified tag; build, test, validate and pack that checkout before uploading the installer. Never replace an older tag to include later fixes.
+
+Pour publier une version, compiler, tester, valider et empaqueter le checkout du nouveau tag. La commande suivante vérifie le tag, les versions, la licence MIT et l’absence de modifications locales avant publication; la CI l’exécute aussi pour les tags de version.
+
+Before publishing, verify the release tag, matching versions, MIT license and clean checkout. CI also runs this check for version tags:
+
+```sh
+npm run release:check -- v0.2.2
+```

@@ -36,6 +36,122 @@ async function runtime(options = {}) {
   return { api, client, sdk, callbacks, messages, warnings, errors, select, timeouts, intervals };
 }
 
+function fireRefresh(timeouts) {
+  const scheduled = [...timeouts].find(([id]) => id.delay !== 1000);
+  assert.ok(scheduled, 'Expected a scheduled status refresh');
+  const [id, callback] = scheduled;
+  timeouts.delete(id);
+  callback();
+  return id.delay;
+}
+
+test('status polling waits until a slow snapshot completes before scheduling another read', async () => {
+  let clock = 0;
+  const { api, client, callbacks, timeouts, intervals } = await runtime({ now: () => clock });
+  const waiting = deferred();
+  client.snapshot = async () => { client.reads++; return waiting.promise; };
+  callbacks.onWillAppear({ action: key('playpause'), payload: {} });
+  await flush();
+  clock = 10000;
+  assert.equal(client.reads, 1);
+  assert.equal(timeouts.size, 0);
+  assert.equal(intervals.size, 0, 'No periodic status interval can request catch-up reads');
+  waiting.resolve(client.data); await flush();
+  assert.equal(client.reads, 1);
+  assert.deepEqual([...timeouts.keys()].map(id => id.delay), [1500]);
+  client.snapshot = async () => { client.reads++; return client.data; };
+  assert.equal(fireRefresh(timeouts), 1500); await flush();
+  assert.equal(client.reads, 2);
+  assert.deepEqual([...timeouts.keys()].map(id => id.delay), [1500]);
+  api.stop();
+});
+
+test('offline polling backs off to 30 seconds and a successful retry restores its usual cadence', async () => {
+  const { api, client, callbacks, timeouts, warnings } = await runtime();
+  client.snapshotError = new Error('offline');
+  callbacks.onWillAppear({ action: key('playpause'), payload: {} }); await flush();
+  for (const expected of [3000, 6000, 15000, 30000, 30000]) {
+    assert.equal(fireRefresh(timeouts), expected); await flush();
+  }
+  assert.equal(client.reads, 6);
+  assert.equal(warnings.length, 1, 'Repeated identical failures do not flood the log');
+  client.snapshotError = undefined;
+  assert.equal(fireRefresh(timeouts), 30000); await flush();
+  assert.equal(fireRefresh(timeouts), 1500); await flush();
+  client.snapshotError = new Error('offline');
+  fireRefresh(timeouts); await flush();
+  assert.deepEqual([...timeouts.keys()].map(id => id.delay), [3000]);
+  api.stop();
+});
+
+test('commands, configuration and wake-up bypass an offline retry delay', async () => {
+  const { api, client, callbacks, timeouts } = await runtime();
+  const action = key('playpause'); client.snapshotError = new Error('offline');
+  callbacks.onWillAppear({ action, payload: {} }); await flush();
+  for (let i = 0; i < 3; i++) { fireRefresh(timeouts); await flush(); }
+  assert.deepEqual([...timeouts.keys()].map(id => id.delay), [30000]);
+  await api.perform({ action }, ['pause']);
+  assert.deepEqual(client.calls, [['pause']]);
+  assert.equal(fireRefresh(timeouts), 250); await flush();
+  assert.deepEqual([...timeouts.keys()].map(id => id.delay), [3000]);
+  for (const request of [() => callbacks.global({ settings: { exePath: 'D:/Spotifast/spotifast.exe' } }), () => callbacks.wake()]) {
+    fireRefresh(timeouts); await flush();
+    assert.deepEqual([...timeouts.keys()].map(id => id.delay), [6000]);
+    const reads = client.reads; request(); await flush();
+    assert.equal(client.reads, reads + 1);
+    assert.deepEqual([...timeouts.keys()].map(id => id.delay), [3000]);
+  }
+  api.stop();
+});
+
+test('a user refresh during a slow read coalesces into one prompt follow-up', async () => {
+  const { api, client, callbacks, timeouts } = await runtime();
+  const waiting = deferred(); client.snapshot = async () => { client.reads++; return client.reads === 1 ? waiting.promise : client.data; };
+  callbacks.onWillAppear({ action: key('playpause'), payload: {} }); await flush();
+  const refreshes = [api.refresh(), api.refresh(), api.refresh()];
+  assert.equal(client.reads, 1); waiting.resolve(client.data); await Promise.all(refreshes);
+  assert.equal(client.reads, 2);
+  assert.deepEqual([...timeouts.keys()].map(id => id.delay), [1500]);
+  api.stop();
+});
+
+test('empty profiles and stop do not rearm polling after an in-flight read settles', async () => {
+  const { api, client, callbacks, timeouts, intervals } = await runtime();
+  assert.equal(timeouts.size, 0, 'An empty profile does not poll');
+  const action = key('playpause'), first = deferred();
+  client.snapshot = async () => { client.reads++; return first.promise; };
+  callbacks.onWillAppear({ action, payload: {} }); await flush();
+  callbacks.onWillDisappear({ action }); first.resolve(client.data); await flush();
+  assert.equal(timeouts.size, 0); assert.equal(action.states.length, 0);
+  const second = deferred(); client.snapshot = async () => { client.reads++; return second.promise; };
+  callbacks.onWillAppear({ action, payload: {} }); await flush();
+  assert.equal(client.reads, 2);
+  callbacks.global({ settings: { language: 'en' } });
+  api.stop(); second.reject(new Error('late offline')); await flush();
+  assert.equal(client.reads, 2, 'A stopped runtime cannot retry a stale configuration');
+  assert.equal(timeouts.size, 0); assert.equal(intervals.size, 0);
+});
+
+test('a pending scheduled poll lets stale countdowns render once and go idle', async () => {
+  let clock = 0;
+  const frames = [], waiting = deferred();
+  const { api, client, callbacks, timeouts, intervals } = await runtime({ now: () => clock, artworkRenderer: {
+    async render(image, title, artists, options) { frames.push(options.remainingMs); return String(options.remainingMs); }
+  } });
+  const action = key(); client.data = { ...client.data, title: 'Hi', state: 'playing', duration: 120000, position: 0 };
+  callbacks.onWillAppear({ action, payload: { settings: { showText: false } } }); await flush();
+  client.snapshot = async () => { client.reads++; return waiting.promise; };
+  clock = 1500; assert.equal(fireRefresh(timeouts), 1500); await flush();
+  clock = 6000; await api.animate();
+  assert.equal(frames.at(-1), 115000);
+  assert.equal(intervals.size, 0); assert.equal(timeouts.size, 0);
+  const count = frames.length; clock = 8000; await api.animate(); assert.equal(frames.length, count);
+  waiting.reject(new Error('timeout')); await flush();
+  assert.deepEqual([...timeouts.keys()].map(id => id.delay), [3000]);
+  assert.equal(action.titles.at(-1), 'Ouvrir\nSpotifast');
+  api.stop();
+});
+
 test('labels follow English/French, including wake-up, without changing action settings', async () => {
   const { api, client, callbacks } = await runtime(); const action = key(); api.visible.set(action.id, { action, settings: {} });
   await api.refresh(); assert.equal(action.images.at(-1), 'caption:Aucun morceau||');

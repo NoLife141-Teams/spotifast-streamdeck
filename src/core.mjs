@@ -158,7 +158,8 @@ var Spotifast = class {
     if (snapshot) { options.key = 'snapshot'; options.dedupe = true; }
     return this.queue.run(async ({ args: queuedArgs }) => {
       const exe = await this.executable();
-      const { stdout } = await this.executeFile(exe, queuedArgs, { windowsHide: true, timeout: 5e3, maxBuffer: 1024 * 1024, encoding: "utf8", shell: false });
+      // Only the short-lived status CLI gets the smaller budget; writes stay serialized.
+      const { stdout } = await this.executeFile(exe, queuedArgs, { windowsHide: true, timeout: snapshot ? 1000 : 5000, maxBuffer: 1024 * 1024, encoding: "utf8", shell: false });
       return stdout;
     }, options);
   }

@@ -17,7 +17,7 @@ test('R12/R05: rebuilding removes obsolete output and preserves the release lice
     await assert.rejects(access(path.join(output, 'ui/obsolete.txt')), error => error.code === 'ENOENT'); assert.equal(await readFile(sibling, 'utf8'), 'preserve');
     assert.equal(await readFile(path.join(output, 'LICENSE'), 'utf8'), await readFile(path.join(fixture, 'LICENSE'), 'utf8'));
     const metadata = JSON.parse(await readFile(path.join(fixture, 'package.json'), 'utf8')); const manifest = JSON.parse(await readFile(path.join(output, 'manifest.json'), 'utf8')); assert.equal(manifest.Version, metadata.version + '.0');
-    const notices = await readFile(path.join(output, 'THIRD_PARTY_NOTICES.txt'), 'utf8'); assert.match(notices, /@elgato\/schemas 0\.4\.16/);
+    const notices = await readFile(path.join(output, 'THIRD_PARTY_NOTICES.txt'), 'utf8'); assert.match(notices, /@elgato\/schemas 0\.5\.1/);
   } finally {
     if (path.dirname(fixture) !== temporaryRoot || !path.basename(fixture).startsWith('build-test-')) throw new Error('Unsafe test cleanup path');
     await rm(fixture, { recursive: true, force: true });

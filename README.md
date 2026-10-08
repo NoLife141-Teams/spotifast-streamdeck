@@ -13,7 +13,7 @@ Il contrôle **Spotifast**, qui doit être installé, ouvert et connecté à Spo
 ### Installation et utilisation
 
 1. Installer Spotifast sur Windows et se connecter à Spotify. La lecture nécessite Spotify Premium.
-2. Installer Stream Deck 6.9 ou plus récent.
+2. Installer Stream Deck 7.1 ou plus récent. Le plugin utilise le SDK Elgato 3.x et nécessite cette version pour ses réglages.
 3. Télécharger le fichier .streamDeckPlugin dans les [versions GitHub](https://github.com/NoLife141-Teams/spotifast-streamdeck/releases), puis ouvrir le fichier.
 4. Ajouter les actions Spotifast aux touches.
 5. Dans **Lancer une playlist**, coller un lien Spotify ou une URI `spotify:playlist:…`. Les liens d’album et de morceau sont également acceptés.
@@ -37,7 +37,7 @@ It controls **Spotifast**, which must be installed, open and signed in to Spotif
 ### Installation and use
 
 1. Install Spotifast on Windows and sign in to Spotify. Playback requires Spotify Premium.
-2. Install Stream Deck 6.9 or newer.
+2. Install Stream Deck 7.1 or newer. The plugin uses Elgato SDK 3.x and requires this version for its settings.
 3. Download the .streamDeckPlugin installer from [GitHub Releases](https://github.com/NoLife141-Teams/spotifast-streamdeck/releases), then open it.
 4. Add Spotifast actions to your keys.
 5. For **Play a playlist**, paste a Spotify link or a `spotify:playlist:…` URI. Album and track links are also supported.

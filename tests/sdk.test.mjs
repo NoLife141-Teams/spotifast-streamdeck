@@ -1,68 +1,76 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { fork } from 'node:child_process';
-import { once, EventEmitter } from 'node:events';
-import { mkdir, mkdtemp, cp, rm } from 'node:fs/promises';
+import { spawn } from 'node:child_process';
+import { cp, mkdtemp, readdir, readFile, rm } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
 import path from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { once } from 'node:events';
 import { WebSocketServer } from 'ws';
 
-test('real Elgato SDK routes macro states and inspector failures to their originating action', { timeout: 15000 }, async () => {
-  const root = fileURLToPath(new URL('../', import.meta.url));
-  const temporaryRoot = path.join(root, '.local-backups');
-  await mkdir(temporaryRoot, { recursive: true });
-  const directory = await mkdtemp(path.join(temporaryRoot, 'sdk-test-'));
-  await cp(path.join(root, 'streamdeck/manifest.json'), path.join(directory, 'manifest.json'));
-  const host = new WebSocketServer({ host: '127.0.0.1', port: 0 });
-  await once(host, 'listening');
-  const messages = [], events = new EventEmitter();
-  const receive = message => { messages.push(message); events.emit('message'); };
-  function waitFor(predicate) {
-    return new Promise((resolve, reject) => {
-      const check = () => {
-        const message = messages.find(predicate);
-        if (message) { clearTimeout(timeout); events.off('message', check); resolve(message); }
-      };
-      const timeout = setTimeout(() => { events.off('message', check); reject(new Error('SDK message timeout: ' + JSON.stringify(messages))); }, 5000);
-      events.on('message', check);
-      check();
-    });
-  }
-  const connection = once(host, 'connection');
-  const info = { application: { language: 'fr', version: '7.4.0', platform: 'windows', platformVersion: '10.0' }, devices: [{ id: 'test-device', name: 'Test', type: 0, size: { columns: 5, rows: 3 } }], plugin: { uuid: 'rocks.spotifast.streamdeck', version: '0.2.2.0' } };
-  const child = fork(fileURLToPath(new URL('./fixtures/sdk-runtime.mjs', import.meta.url)), ['-port', String(host.address().port), '-pluginUUID', 'rocks.spotifast.streamdeck', '-registerEvent', 'registerPlugin', '-info', JSON.stringify(info)], { cwd: directory, silent: true });
-  child.on('message', receive);
-  let socket;
-  try {
-    [socket] = await connection;
-    socket.on('message', raw => {
-      const message = JSON.parse(raw);
-      receive(message);
-      if (message.event === 'getGlobalSettings') socket.send(JSON.stringify({ event: 'didReceiveGlobalSettings', payload: { settings: { language: 'fr' } } }));
-    });
-    await waitFor(message => message.ready);
-    assert.equal((await waitFor(message => message.event === 'registerPlugin')).uuid, 'rocks.spotifast.streamdeck');
-    const action = 'rocks.spotifast.streamdeck.playpause';
-    const send = (event, context, payload = {}) => socket.send(JSON.stringify({ event, context, action, device: 'test-device', payload }));
-    send('willAppear', 'key-a', { controller: 'Keypad', coordinates: { column: 0, row: 0 }, settings: {}, isInMultiAction: false });
-    assert.equal((await waitFor(message => message.event === 'setState' && message.context === 'key-a')).payload.state, 0);
-    send('keyDown', 'key-a', { settings: {}, isInMultiAction: true, userDesiredState: 1 });
-    assert.deepEqual((await waitFor(message => message.command)).command, ['play']);
-    send('propertyInspectorDidAppear', 'key-a');
-    send('sendToPlugin', 'key-a', { type: 'open', requestId: 'sdk-open' });
-    const failure = await waitFor(message => message.event === 'sendToPropertyInspector' && message.payload.requestId === 'sdk-open');
-    assert.equal(failure.context, 'key-a');
-    assert.equal(failure.payload.messageKey, 'executableMissing');
-    assert.equal(failure.payload.online, false);
-    assert.match(failure.payload.message, /introuvable/);
-    assert.equal(messages.some(message => message.event === 'setGlobalSettings'), false);
-  } finally {
-    socket?.terminate();
-    const ended = once(child, 'exit');
-    child.kill();
-    await ended;
-    await new Promise(resolve => host.close(resolve));
-    if (path.dirname(directory) !== temporaryRoot || !path.basename(directory).startsWith('sdk-test-')) throw new Error('Unsafe SDK fixture cleanup');
+test('packaged plugin starts with the real SDK on Stream Deck 7.1 and applies global settings', { timeout: 15000 }, async t => {
+  const directory = await mkdtemp(path.join(tmpdir(), 'spotifast-sdk-'));
+  const server = new WebSocketServer({ host: '127.0.0.1', port: 0 });
+  let child;
+  let output = '';
+  const messages = [];
+  t.after(async () => {
+    if (child && child.exitCode === null && child.signalCode === null) {
+      const closed = once(child, 'close');
+      child.kill();
+      await closed;
+    }
+    for (const socket of server.clients) socket.terminate();
+    await new Promise(resolve => server.close(resolve));
+    assert.equal(path.dirname(directory), tmpdir());
+    assert.ok(path.basename(directory).startsWith('spotifast-sdk-'));
     await rm(directory, { recursive: true, force: true });
+  });
+  await cp(new URL('../build/rocks.spotifast.streamdeck.sdPlugin/', import.meta.url), directory, { recursive: true });
+  const executable = path.join(directory, 'missing', 'spotifast.exe');
+  const action = 'rocks.spotifast.streamdeck.nowplaying';
+  const context = 'sdk-smoke-cover';
+  server.on('connection', socket => {
+    socket.on('message', raw => {
+      const message = JSON.parse(raw.toString());
+      messages.push(message);
+      if (message.event === 'getGlobalSettings') {
+        socket.send(JSON.stringify({ event: 'didReceiveGlobalSettings', context: message.context, id: message.id,
+          payload: { settings: { language: 'fr', exePath: executable } } }));
+        socket.send(JSON.stringify({ event: 'willAppear', action, context, device: 'sdk-smoke-device',
+          payload: { controller: 'Keypad', coordinates: { column: 0, row: 0 }, settings: {}, state: 0, isInMultiAction: false } }));
+      }
+      if (message.event === 'setTitle' && message.payload.title === 'Ouvrir\nSpotifast') {
+        socket.send(JSON.stringify({ event: 'didReceiveGlobalSettings', context: 'sdk-smoke-plugin',
+          payload: { settings: { language: 'en', exePath: executable } } }));
+      }
+    });
+  });
+  if (!server.address()) await once(server, 'listening');
+  child = spawn(process.execPath, [path.join(directory, 'bin', 'plugin.js'),
+    '-port', String(server.address().port), '-pluginUUID', 'sdk-smoke-plugin', '-registerEvent', 'registerPlugin',
+    '-info', JSON.stringify({ application: { language: 'en', platform: 'windows', platformVersion: '10', version: '7.1.0.0' },
+      plugin: { uuid: 'rocks.spotifast.streamdeck', version: '0.2.1.0' }, devicePixelRatio: 1,
+      devices: [{ id: 'sdk-smoke-device', name: 'Test Stream Deck', type: 0, size: { columns: 3, rows: 2 } }] })],
+    { cwd: directory, windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'] });
+  child.stdout.on('data', data => { output += data.toString(); });
+  child.stderr.on('data', data => { output += data.toString(); });
+  let spawnError;
+  child.on('error', error => { spawnError = error; });
+  const deadline = Date.now() + 8000;
+  while (Date.now() < deadline) {
+    if (messages.some(message => message.event === 'setTitle' && message.payload.title === 'Open\nSpotifast')) break;
+    if (spawnError || child.exitCode !== null) break;
+    await new Promise(resolve => setTimeout(resolve, 25));
   }
+  const logFiles = await readdir(path.join(directory, 'logs')).catch(() => []);
+  const logs = (await Promise.all(logFiles.map(file => readFile(path.join(directory, 'logs', file), 'utf8')))).join('\n');
+  const diagnostics = (spawnError?.message || '') + output + logs;
+  assert.ok(messages.some(message => message.event === 'registerPlugin'), 'SDK did not register: ' + diagnostics);
+  const request = messages.find(message => message.event === 'getGlobalSettings');
+  assert.ok(request?.id, 'SDK v3 did not request settings with a message identifier');
+  assert.ok(messages.some(message => message.event === 'setTitle' && message.payload.title === 'Ouvrir\nSpotifast'),
+    'Initial French global settings were not applied: ' + diagnostics);
+  assert.ok(messages.some(message => message.event === 'setTitle' && message.payload.title === 'Open\nSpotifast'),
+    'English global-settings update was not applied: ' + diagnostics);
+  assert.ok(!diagnostics.includes('[ERR_NOT_SUPPORTED]'), diagnostics);
 });

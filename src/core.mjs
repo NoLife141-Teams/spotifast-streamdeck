@@ -214,11 +214,6 @@ var ArtworkCache = class {
       this.cache.delete(oldest);
     }
   }
-  isFresh(url, value) {
-    // Check the original deadline even when a key already holds this image.
-    const cached = this.cache.get(url);
-    return !!value && cached?.value === value && cached.expires > (this.now?.() ?? Date.now());
-  }
   async get(url2) {
     if (!isArtworkUrl(url2)) return void 0;
     const cached2 = this.cache.get(url2);
@@ -254,6 +249,11 @@ var ArtworkCache = class {
     }
     this.remember(url2, value);
     return value;
+  }
+  isFresh(url, value) {
+    // Check the original deadline even when a key already holds this image.
+    const cached = this.cache.get(url);
+    return !!value && cached?.value === value && cached.expires > (this.now?.() ?? Date.now());
   }
 };
 function shortText(value, max = 13) {

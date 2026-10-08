@@ -26,6 +26,8 @@ Les multi-actions peuvent définir explicitement Lecture/Pause avec la touche ic
 
 ### État de la version
 
+La version 0.2.4 fiabilise Lecture/Pause avec pochette dans les multi-actions, vérifie les liens Spotify pendant la saisie et adapte la fréquence de l’animation au contenu de chaque touche. Le compteur affiche sa dernière valeur avant l’arrêt de l’animation. Les identifiants des actions et les réglages sont conservés. Les trois améliorations ont fait l’objet de revues indépendantes; les tests couvrent leurs interactions.
+
 La version 0.2.3 ajoute le défilement des titres et noms d’artistes trop longs sur **Lecture / Pause avec pochette**, ainsi qu’un compteur du temps restant en haut de la touche. Le texte revient progressivement au début, avec un ralentissement aux extrémités et jusqu’à dix images par seconde. Les textes courts restent immobiles. Le compteur se fige en pause et disparaît si la durée est inconnue. Les options **Faire défiler les titres et noms d’artistes longs** et **Afficher le temps restant du morceau** sont activées par défaut et peuvent être désactivées séparément; le compteur peut aussi s’afficher sans les légendes.
 
 **Lecture / Pause (icône)** et **Lecture / Pause avec pochette** contrôlent toutes deux la lecture. La pochette n’a pas de symbole permanent. Après un appui confirmé par le lecteur, un grand symbole s’affiche au centre pendant une seconde : ▶ quand la lecture reprend, ⏸ quand elle se met en pause. Le symbole disparaît progressivement, puis la pochette retrouve son affichage normal. Cette confirmation fonctionne aussi quand les légendes et le compteur sont masqués.
@@ -61,6 +63,8 @@ Automatic detection supports the standard Windows installation. You can set a cu
 Multi Actions can explicitly set Play/Pause with either the icon key or the artwork key, Shuffle on/off, and Repeat off/context. Repeating a Play or Pause Multi Action keeps the requested state. On a regular key, both Play/Pause actions still toggle playback. Favorite remains available as a key but is excluded from Multi Actions. Pending commands are bounded and nearby rotations in the same direction are combined.
 
 ### Version status
+
+Version 0.2.4 makes artwork Play/Pause reliable in Multi Actions, checks Spotify links as you type and adapts animation scheduling to each key’s content. The countdown renders its final value before animation stops. Action identifiers and settings are preserved. All three improvements received independent reviews, and tests cover their interactions.
 
 Version 0.2.3 adds scrolling for long titles and artist names on **Play / Pause with artwork**, plus a remaining-time counter at the top of the key. Text returns gradually to the beginning, easing at both ends with up to ten frames per second. Short text stays stationary. The counter freezes when paused and hides when duration is unknown. **Scroll long titles and artist names** and **Show the remaining track time** default to enabled and can be disabled separately; the timer can also appear without captions.
 
@@ -119,5 +123,5 @@ Pour publier une version, compiler, tester, valider et empaqueter le checkout du
 Before publishing, verify the release tag, matching versions, MIT license and clean checkout. CI also runs this check for version tags:
 
 ```sh
-npm run release:check -- v0.2.3
+npm run release:check -- v0.2.4
 ```

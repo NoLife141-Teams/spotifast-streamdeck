@@ -149,8 +149,9 @@ export function createRuntime(streamDeck, {
     if (entry.scrolling && entry.settings.showText !== false && entry.settings.scrollText !== false) return 100;
     const elapsed = Math.max(0, clock - sampledAt);
     const remaining = remainingTime(state, elapsed);
-    // Keep the last tick so a finished countdown can display zero before going idle.
-    if (entry.settings.showRemaining !== false && state.state === 'playing' && elapsed < 5000 && remaining !== undefined && (remaining > 0 || entry.remainingMs > 0)) return 1000;
+    // Render the final value before a finished or stale countdown goes idle.
+    if (entry.settings.showRemaining !== false && state.state === 'playing' && remaining !== undefined &&
+      ((elapsed < 5000 && remaining > 0) || entry.remainingMs > remaining)) return 1000;
     return undefined;
   }
   function animate() {

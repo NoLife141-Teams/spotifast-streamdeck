@@ -385,6 +385,27 @@ test('unknown, finished and stale countdowns do not keep an animation loop alive
   api.stop();
 });
 
+test('a delayed snapshot lets countdowns render their final clamped value before going idle', async () => {
+  for (const [duration, expected] of [[4500, 0], [5000, 0], [120000, 115000]]) {
+    let clock = 0;
+    const frames = [], waiting = deferred();
+    const { api, client, intervals } = await runtime({ now: () => clock, artworkRenderer: { async render(image, title, artists, options) { frames.push(options.remainingMs); return String(options.remainingMs); } } });
+    const action = key(); api.visible.set(action.id, { action, settings: { showText: false } });
+    client.data = { ...client.data, state: 'playing', duration, position: 0 };
+    await api.refresh();
+    clock = 1000; await api.animate();
+    client.snapshot = () => waiting.promise;
+    clock = 1500; const polling = api.refresh();
+    for (clock = 2000; clock <= 5000; clock += 1000) await api.animate();
+    assert.equal(frames.at(-1), expected, `Countdown with ${duration} ms remaining must render its final value`);
+    assert.ok(![...intervals.values()].some(timer => timer.period !== 1500));
+    const count = frames.length;
+    clock = 7000; await api.animate(); assert.equal(frames.length, count);
+    waiting.resolve({ ...client.data, state: 'paused' }); await polling;
+    api.stop();
+  }
+});
+
 test('playback feedback temporarily accelerates a stationary artwork key', async () => {
   let clock = 0;
   const { api, client, timeouts, intervals } = await runtime({ now: () => clock });

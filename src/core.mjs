@@ -9,10 +9,10 @@ class LocalizedError extends Error {
 }
 var UUID = "rocks.spotifast.streamdeck";
 var actions = [
-  ["playpause","Play / Pause","play"],
+  ["playpause","Play / Pause (icon)","play"],
   ["next","Next","next"],
   ["previous","Previous","previous"],
-  ["nowplaying","Track and artwork","music"],
+  ["nowplaying","Play / Pause with artwork","music"],
   ["volumeup","Volume +","volumeup"],
   ["volumedown","Volume −","volumedown"],
   ["mute","Mute","mute"],
@@ -34,6 +34,11 @@ function parseNowPlaying(raw) {
 function volumeStep(settings2 = {}) {
   const step = Number(settings2.step ?? 5);
   return Number.isFinite(step) ? Math.max(1, Math.min(25, Math.round(step))) : 5;
+}
+function remainingTime(snapshot, elapsedMs = 0) {
+  if (!snapshot || snapshot.state === 'stopped' || !Number.isFinite(snapshot.duration) || snapshot.duration <= 0 || !Number.isFinite(snapshot.position)) return undefined;
+  const elapsed = snapshot.state === 'playing' && Number.isFinite(elapsedMs) ? Math.max(0, Math.min(5000, elapsedMs)) : 0;
+  return Math.max(0, snapshot.duration - Math.max(0, snapshot.position) - elapsed);
 }
 function spotifyUri(value) {
   const text = String(value ?? "").trim();
@@ -232,4 +237,4 @@ function shortText(value, max = 13) {
 }
 
 
-export {LocalizedError, UUID, actions, parseNowPlaying, volumeStep, spotifyUri, commandFor, CommandQueue, Spotifast, isArtworkUrl, ArtworkCache, shortText};
+export {LocalizedError, UUID, actions, parseNowPlaying, remainingTime, volumeStep, spotifyUri, commandFor, CommandQueue, Spotifast, isArtworkUrl, ArtworkCache, shortText};

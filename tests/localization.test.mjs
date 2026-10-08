@@ -19,6 +19,7 @@ test('Spotify links and existing commands survive localization', () => {
   assert.equal(spotifyUri('https://open.spotify.com/intl-fr/playlist/example123?si=test'), 'spotify:playlist:example123');
   assert.deepEqual(commandFor('playlist', { uri: 'https://open.spotify.com/playlist/example123' }), ['play-uri', 'spotify:playlist:example123']);
   assert.deepEqual(commandFor('playpause'), ['play-pause']);
+  assert.deepEqual(commandFor('nowplaying'), ['play-pause']);
   assert.deepEqual(commandFor('volume', { step: 5 }, -2), ['volume-down', '10']);
   assert.throws(() => spotifyUri('https://example.com/playlist/no'), error => error.messageKey === 'invalidUri');
   const raw = ['playing','Track','Artist','Album','123','456','59','on','off','https://i.scdn.co/example','no','Spotifast'].join('\t');

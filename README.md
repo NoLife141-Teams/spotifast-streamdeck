@@ -16,13 +16,13 @@ Il contrôle **Spotifast**, qui doit être installé, ouvert et connecté à Spo
 2. Installer Stream Deck 7.1 ou plus récent. Le plugin utilise le SDK Elgato 3.x et nécessite cette version pour ses réglages.
 3. Télécharger le fichier .streamDeckPlugin dans les [versions GitHub](https://github.com/NoLife141-Teams/spotifast-streamdeck/releases), puis ouvrir le fichier.
 4. Ajouter les actions Spotifast aux touches.
-5. Dans **Lancer une playlist**, coller un lien Spotify ou une URI `spotify:playlist:…`. Les liens d’album et de morceau sont également acceptés.
+5. Dans **Lancer une playlist**, coller un lien Spotify ou une URI `spotify:playlist:…`. Les liens d’album et de morceau sont également acceptés. Les réglages indiquent immédiatement si le format est reconnu; une saisie invalide est signalée sous le champ. Cette vérification ne confirme pas l’existence du contenu ni sa disponibilité sur ton compte.
 
 La fenêtre de réglages suit la langue de Stream Deck. Le choix **Langue → English / Français** change les réglages et les messages du plugin pour toutes les touches. Les noms de la liste d’actions suivent la langue de Stream Deck.
 
 La détection automatique couvre l’installation Windows standard. Un emplacement personnalisé de `spotifast.exe` peut être indiqué dans les réglages.
 
-Les multi-actions peuvent définir explicitement Lecture/Pause, Aléatoire activé/désactivé et Répétition désactivée/contexte. Favori reste disponible comme touche, mais est exclu des multi-actions. Les commandes en attente sont limitées et les rotations proches dans le même sens sont regroupées.
+Les multi-actions peuvent définir explicitement Lecture/Pause avec la touche icône ou la touche avec pochette, Aléatoire activé/désactivé et Répétition désactivée/contexte. Relancer une multi-action Lecture ou Pause conserve l’état demandé. Sur une touche normale, les deux actions Lecture/Pause basculent toujours la lecture. Favori reste disponible comme touche, mais est exclu des multi-actions. Les commandes en attente sont limitées et les rotations proches dans le même sens sont regroupées.
 
 ### État de la version
 
@@ -52,13 +52,13 @@ It controls **Spotifast**, which must be installed, open and signed in to Spotif
 2. Install Stream Deck 7.1 or newer. The plugin uses Elgato SDK 3.x and requires this version for its settings.
 3. Download the .streamDeckPlugin installer from [GitHub Releases](https://github.com/NoLife141-Teams/spotifast-streamdeck/releases), then open it.
 4. Add Spotifast actions to your keys.
-5. For **Play a playlist**, paste a Spotify link or a `spotify:playlist:…` URI. Album and track links are also supported.
+5. For **Play a playlist**, paste a Spotify link or a `spotify:playlist:…` URI. Album and track links are also supported. Settings immediately show whether the format is recognized; invalid input is flagged below the field. This check does not confirm that the content exists or is available to your account.
 
 Settings follow the Stream Deck language. **Language → English / Français** changes the settings and runtime messages for all plugin buttons. Names in the action list follow the Stream Deck language.
 
 Automatic detection supports the standard Windows installation. You can set a custom `spotifast.exe` location in the settings.
 
-Multi Actions can explicitly set Play/Pause, Shuffle on/off, and Repeat off/context. Favorite remains available as a key but is excluded from Multi Actions. Pending commands are bounded and nearby rotations in the same direction are combined.
+Multi Actions can explicitly set Play/Pause with either the icon key or the artwork key, Shuffle on/off, and Repeat off/context. Repeating a Play or Pause Multi Action keeps the requested state. On a regular key, both Play/Pause actions still toggle playback. Favorite remains available as a key but is excluded from Multi Actions. Pending commands are bounded and nearby rotations in the same direction are combined.
 
 ### Version status
 

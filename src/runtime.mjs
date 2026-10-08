@@ -95,9 +95,9 @@ export function createRuntime(streamDeck, {
       title = t('openButton');
       if (id === 'nowplaying') picture = 'imgs/music.png';
       feedback = { title: 'Spotifast', value: t('offline'), indicator: 0, icon: 'imgs/music.png' };
-      if (['playpause', 'shuffle', 'repeat', 'like'].includes(id)) buttonState = 0;
+      if (['playpause', 'nowplaying', 'shuffle', 'repeat', 'like'].includes(id)) buttonState = 0;
     } else {
-      if (id === 'playpause') buttonState = snapshot.state === 'playing' ? 1 : 0;
+      if (['playpause', 'nowplaying'].includes(id)) buttonState = snapshot.state === 'playing' ? 1 : 0;
       if (id === 'shuffle') buttonState = snapshot.shuffle ? 1 : 0;
       if (id === 'repeat') { buttonState = snapshot.repeat === 'off' ? 0 : 1; title = snapshot.repeat === 'track' ? '1' : ''; }
       if (id === 'like') buttonState = snapshot.saved === 'yes' ? 1 : 0;
@@ -130,13 +130,13 @@ export function createRuntime(streamDeck, {
     const signature = JSON.stringify({ title, picture, feedback, buttonState });
     if (!current() || entry.signature === signature) return;
     if (action.isKey()) {
-      if (buttonState !== undefined) await action.setState(buttonState);
+      if (buttonState !== undefined && (entry.signature === undefined || entry.renderedState !== buttonState)) await action.setState(buttonState);
       if (!current()) return;
       if (picture !== undefined) await action.setImage(picture);
       if (!current()) return;
       if (entry.signature === undefined || entry.renderedTitle !== title) await action.setTitle(title);
     } else if (feedback) await action.setFeedback(feedback);
-    if (current()) { entry.signature = signature; entry.renderedTitle = title; }
+    if (current()) { entry.signature = signature; entry.renderedTitle = title; entry.renderedState = buttonState; }
   }
   async function renderEntries(entries, image, url) {
     const results = await Promise.allSettled(entries.map(entry => render(entry, image, url)));

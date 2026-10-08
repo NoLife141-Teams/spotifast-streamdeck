@@ -61,11 +61,41 @@ test('R01: successful commands with no state change also force a resync, using o
 
 test('R02: Multi Actions issue explicit commands and Favorite is excluded', async () => {
   const { callbacks, client } = await runtime();
-  for (const [id, desired, expected] of [['playpause', 1, ['play']], ['playpause', 0, ['pause']], ['shuffle', 1, ['shuffle', 'on']], ['shuffle', 0, ['shuffle', 'off']], ['repeat', 1, ['repeat', 'context']], ['repeat', 0, ['repeat', 'off']]]) {
+  for (const [id, desired, expected] of [['playpause', 1, ['play']], ['playpause', 0, ['pause']], ['nowplaying', 1, ['play']], ['nowplaying', 0, ['pause']], ['shuffle', 1, ['shuffle', 'on']], ['shuffle', 0, ['shuffle', 'off']], ['repeat', 1, ['repeat', 'context']], ['repeat', 0, ['repeat', 'off']]]) {
     callbacks.onKeyDown({ action: key(id), payload: { settings: {}, isInMultiAction: true, userDesiredState: desired } }); await flush(); assert.deepEqual(client.calls.at(-1), expected);
   }
-  const action = key('like'); callbacks.onKeyDown({ action, payload: { settings: {}, isInMultiAction: true, userDesiredState: 1 } }); await flush(); assert.equal(action.alerts, 1); assert.equal(client.calls.length, 6);
+  const action = key('like'); callbacks.onKeyDown({ action, payload: { settings: {}, isInMultiAction: true, userDesiredState: 1 } }); await flush(); assert.equal(action.alerts, 1); assert.equal(client.calls.length, 8);
   const manifest = JSON.parse(await readFile(new URL('../streamdeck/manifest.json', import.meta.url), 'utf8')); assert.equal(manifest.Actions.find(a => a.UUID.endsWith('.like')).SupportedInMultiActions, false);
+});
+
+test('artwork playback states remain synchronized without replacing the cover', async () => {
+  const { api, client } = await runtime({ artwork: { async get() { return 'cover'; } } });
+  const action = key(); api.visible.set(action.id, { action, settings: { showText: false, showRemaining: false } });
+  client.data = { ...client.data, title: 'Track', artUrl: 'https://i.scdn.co/cover' };
+  for (const [playback, expected] of [['paused', 0], ['playing', 1]]) {
+    client.data.state = playback; await api.refresh(); await flush();
+    assert.equal(action.states.at(-1), expected);
+    assert.equal(action.images.at(-1), 'cover');
+  }
+  client.runError = new Error('refused'); await api.perform({ action }, ['pause']);
+  assert.equal(action.alerts, 1); assert.equal(action.states.at(-1), 1); assert.equal(action.images.at(-1), 'cover');
+  client.snapshotError = new Error('offline'); await api.refresh();
+  assert.equal(action.states.at(-1), 0); assert.equal(action.images.at(-1), 'imgs/music.png');
+  const manifest = JSON.parse(await readFile(new URL('../streamdeck/manifest.json', import.meta.url), 'utf8'));
+  const artwork = manifest.Actions.find(item => item.UUID.endsWith('.nowplaying'));
+  assert.equal(artwork.States.length, 2); assert.equal(artwork.DisableAutomaticStates, true);
+  api.stop();
+});
+
+test('artwork animation does not reapply its unchanged playback state', async () => {
+  let clock = 0;
+  const { api, client } = await runtime({ now: () => clock, artworkRenderer: { async render(image, title, artists, options) { return String(options.elapsedMs); } } });
+  const action = key(); api.visible.set(action.id, { action, settings: {} });
+  client.data = { ...client.data, state: 'playing', title: 'A very long track title' }; await api.refresh();
+  const states = action.states.length;
+  clock = 2000; await api.animate();
+  assert.equal(action.images.at(-1), '2000'); assert.equal(action.states.length, states);
+  api.stop();
 });
 
 test('R07: errors from another key never enter the currently selected inspector', async () => {

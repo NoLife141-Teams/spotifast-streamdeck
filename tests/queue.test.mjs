@@ -49,7 +49,11 @@ test('changing executable cancels pending commands from the previous configurati
 });
 
 test('R02: explicit macro commands are idempotent and unsupported targets are rejected', () => {
-  assert.deepEqual(commandFor('playpause', {}, undefined, 1), ['play']); assert.deepEqual(commandFor('playpause', {}, undefined, 0), ['pause']);
+  for (const id of ['playpause', 'nowplaying']) {
+    assert.deepEqual(commandFor(id, {}, undefined, 1), ['play']);
+    assert.deepEqual(commandFor(id, {}, undefined, 0), ['pause']);
+    assert.deepEqual(commandFor(id), ['play-pause']);
+  }
   assert.throws(() => commandFor('playpause', {}, undefined, 2), e => e.messageKey === 'unknownAction');
   assert.throws(() => commandFor('like', {}, undefined, 1), e => e.messageKey === 'unsupportedMultiAction');
 });

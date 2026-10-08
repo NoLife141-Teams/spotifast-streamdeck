@@ -1,4 +1,5 @@
 import translations from '../streamdeck/ui/i18n.js';
+import spotifyLinks from '../streamdeck/ui/spotify.js';
 import {execFile, spawn} from 'node:child_process';
 import {promisify} from 'node:util';
 import {access} from 'node:fs/promises';
@@ -41,21 +42,14 @@ function remainingTime(snapshot, elapsedMs = 0) {
   return Math.max(0, snapshot.duration - Math.max(0, snapshot.position) - elapsed);
 }
 function spotifyUri(value) {
-  const text = String(value ?? "").trim();
-  if (/^spotify:(playlist|album|track|artist|show):[A-Za-z0-9]+$/.test(text)) return text;
-  try {
-    const url2 = new URL(text);
-    if (url2.protocol !== "https:" || url2.hostname !== "open.spotify.com") throw new Error();
-    const match = url2.pathname.match(/^\/(?:intl-[a-z]+\/)?(playlist|album|track|artist|show)\/([A-Za-z0-9]+)\/?$/);
-    if (match) return `spotify:${match[1]}:${match[2]}`;
-  } catch {
-  }
+  const uri = spotifyLinks.spotifyUri(value);
+  if (uri) return uri;
   throw new LocalizedError("invalidUri");
 }
 function commandFor(id, settings2 = {}, ticks, desiredState) {
   if (desiredState !== undefined) {
     if (![0, 1].includes(desiredState)) throw new LocalizedError('unknownAction');
-    if (id === 'playpause') return [desiredState ? 'play' : 'pause'];
+    if (['playpause', 'nowplaying'].includes(id)) return [desiredState ? 'play' : 'pause'];
     if (id === 'shuffle') return ['shuffle', desiredState ? 'on' : 'off'];
     if (id === 'repeat') return ['repeat', desiredState ? 'context' : 'off'];
     if (id === 'like') throw new LocalizedError('unsupportedMultiAction');

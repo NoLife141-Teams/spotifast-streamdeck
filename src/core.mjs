@@ -49,7 +49,7 @@ function spotifyUri(value) {
 function commandFor(id, settings2 = {}, ticks, desiredState) {
   if (desiredState !== undefined) {
     if (![0, 1].includes(desiredState)) throw new LocalizedError('unknownAction');
-    if (id === 'playpause') return [desiredState ? 'play' : 'pause'];
+    if (['playpause', 'nowplaying'].includes(id)) return [desiredState ? 'play' : 'pause'];
     if (id === 'shuffle') return ['shuffle', desiredState ? 'on' : 'off'];
     if (id === 'repeat') return ['repeat', desiredState ? 'context' : 'off'];
     if (id === 'like') throw new LocalizedError('unsupportedMultiAction');

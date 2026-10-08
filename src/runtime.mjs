@@ -9,7 +9,8 @@ export function createRuntime(streamDeck, {
   let t = translations.createTranslator(translations.resolveLanguage('auto', streamDeck.info.application.language));
   const visible = new Map(), artworkRequests = new Map();
   let state, online = false, refreshing, refreshAgain = false, configured = false, configuration = 0;
-  let lastError = '', uiSession = 0, uiRevision = 0, refreshTimer, interval;
+  let lastError = '', uiSession = 0, uiRevision = 0, refreshTimer;
+  let failures = 0, retryRevision = 0;
   let sampledAt = 0, animationInterval, animationPeriod, animating, started = false;
   let playbackRequest;
   let resolveConfigured;
@@ -60,6 +61,7 @@ export function createRuntime(streamDeck, {
     }
   }
   function configure(settings = {}) {
+    resetPolling();
     client.configure(settings.exePath ?? '');
     t = translations.createTranslator(translations.resolveLanguage(settings.language, streamDeck.info.application.language));
     configuration++;
@@ -195,20 +197,40 @@ export function createRuntime(streamDeck, {
     }).catch(report).finally(() => artworkRequests.delete(url));
     artworkRequests.set(url, task);
   }
-  function refresh() {
-    if (!configured || !visible.size) return Promise.resolve();
+  function resetPolling() {
+    timers.clearTimeout(refreshTimer);
+    refreshTimer = undefined;
+    failures = 0;
+    retryRevision++;
+  }
+  function schedulePoll() {
+    if (!started || !configured || !visible.size || refreshTimer !== undefined) return;
+    const delay = failures ? [3000, 6000, 15000, 30000][Math.min(failures, 4) - 1] : 1500;
+    refreshTimer = timers.setTimeout(() => {
+      refreshTimer = undefined;
+      refresh({ background: true }).catch(report);
+    }, delay);
+  }
+  function refresh({ background = false } = {}) {
+    if (!background) resetPolling();
+    if (!started || !configured || !visible.size) return Promise.resolve();
     if (refreshing) { refreshAgain = true; return refreshing; }
     refreshing = (async () => {
       do {
         refreshAgain = false;
         const config = configuration;
+        const retry = retryRevision;
         try {
           const next = await client.snapshot();
+          if (!started || !visible.size) break;
           if (config !== configuration) { refreshAgain = true; continue; }
           state = next; sampledAt = now(); online = true; lastError = '';
+          failures = 0;
           confirmPlayback(next);
         } catch (error) {
+          if (!started || !visible.size) break;
           if (config !== configuration) { refreshAgain = true; continue; }
+          if (retry === retryRevision) failures = Math.min(failures + 1, 4);
           online = false;
           resetPlaybackFeedback();
           const message = error.message ?? t('unavailable');
@@ -218,12 +240,13 @@ export function createRuntime(streamDeck, {
         await renderEntries([...visible.values()]);
         updateAnimationTimer();
         requestArtwork();
-      } while (refreshAgain && visible.size);
-    })().finally(() => { refreshing = undefined; });
+      } while (refreshAgain && started && visible.size);
+    })().finally(() => { refreshing = undefined; schedulePoll(); });
     return refreshing;
   }
   function scheduleRefresh() {
-    timers.clearTimeout(refreshTimer);
+    resetPolling();
+    if (!started || !visible.size) return;
     refreshTimer = timers.setTimeout(() => { refreshTimer = undefined; refresh().catch(report); }, 250);
   }
   async function failed(event, error, token) {
@@ -239,6 +262,7 @@ export function createRuntime(streamDeck, {
     let request;
     try {
       await ready;
+      resetPolling();
       if (['play-pause', 'play', 'pause'].includes(args?.[0])) {
         resetPlaybackFeedback();
         request = playbackRequest = {
@@ -269,12 +293,14 @@ export function createRuntime(streamDeck, {
     if (!token) return;
     try {
       await ready;
+      resetPolling();
       if (event.payload.type === 'open') await client.open();
       let config, snapshot;
       do { config = configuration; snapshot = await client.snapshot(); } while (config !== configuration && currentInspector(token));
       await sendStatus(token, statusPayload(true, snapshot.title ? 'nowPlaying' : 'connected', snapshot.title));
       if (event.payload.type === 'open') await refresh();
     } catch (error) { await sendStatus(token, statusPayload(false, userError(error))); }
+    finally { if (!refreshing) schedulePoll(); }
   }
   streamDeck.ui.onDidAppear(() => { uiSession++; uiRevision++; });
   streamDeck.ui.onDidDisappear(() => { uiSession++; uiRevision++; });
@@ -286,6 +312,7 @@ export function createRuntime(streamDeck, {
     const entry = visible.get(event.action.id); if (entry) invalidate(entry);
     if (entry) clearPlaybackFeedback(entry);
     visible.delete(event.action.id);
+    if (!visible.size) resetPolling();
     updateAnimationTimer();
   });
   streamDeck.settings.onDidReceiveSettings(event => {
@@ -316,6 +343,7 @@ export function createRuntime(streamDeck, {
   streamDeck.actions.onTouchTap(event => perform(event, ['play-pause']).catch(report));
   streamDeck.ui.onSendToPlugin(event => { inspectorRequest(event).catch(report); });
   streamDeck.system.onSystemDidWakeUp(() => {
+    resetPolling();
     client.configure(client.customPath);
     configuration++;
     resetPlaybackFeedback();
@@ -330,8 +358,7 @@ export function createRuntime(streamDeck, {
       configure(await streamDeck.settings.getGlobalSettings());
       streamDeck.logger.info(t('started', { count: actions.length }));
       await refresh();
-      interval = timers.setInterval(() => refresh().catch(report), 1500);
     },
-    stop() { started = false; resetPlaybackFeedback(); timers.clearTimeout(refreshTimer); timers.clearInterval(interval); timers.clearInterval(animationInterval); animationInterval = undefined; animationPeriod = undefined; }
+    stop() { started = false; resetPolling(); resetPlaybackFeedback(); timers.clearInterval(animationInterval); animationInterval = undefined; animationPeriod = undefined; }
   };
 }

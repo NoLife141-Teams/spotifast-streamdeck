@@ -24,6 +24,8 @@ La détection automatique couvre l’installation Windows standard. Un emplaceme
 
 Les multi-actions peuvent définir explicitement Lecture/Pause avec la touche icône ou la touche avec pochette, Aléatoire activé/désactivé et Répétition désactivée/contexte. Relancer une multi-action Lecture ou Pause conserve l’état demandé. Sur une touche normale, les deux actions Lecture/Pause basculent toujours la lecture. Favori reste disponible comme touche, mais est exclu des multi-actions. Les commandes en attente sont limitées et les rotations proches dans le même sens sont regroupées.
 
+Les lectures de statut sont espacées de 1,5 seconde après la fin de la lecture précédente, sans rattrapage si Spotifast ralentit. Après un échec, le plugin attend 3, 6, 15 puis 30 secondes entre les tentatives. Une commande, un changement de configuration ou un réveil relance la vérification sans attendre ce délai; après une commande réussie, le statut est vérifié après 250 ms. Les lectures CLI ont un délai d’exécution d’une seconde, les commandes d’écriture gardent cinq secondes et restent sérialisées. Aucune lecture automatique n’est lancée sans touche Spotifast visible.
+
 ### État de la version
 
 La version 0.2.4 fiabilise Lecture/Pause avec pochette dans les multi-actions, vérifie les liens Spotify pendant la saisie et adapte la fréquence de l’animation au contenu de chaque touche. Le compteur affiche sa dernière valeur avant l’arrêt de l’animation. Les identifiants des actions et les réglages sont conservés. Les trois améliorations ont fait l’objet de revues indépendantes; les tests couvrent leurs interactions.
@@ -61,6 +63,8 @@ Settings follow the Stream Deck language. **Language → English / Français** c
 Automatic detection supports the standard Windows installation. You can set a custom `spotifast.exe` location in the settings.
 
 Multi Actions can explicitly set Play/Pause with either the icon key or the artwork key, Shuffle on/off, and Repeat off/context. Repeating a Play or Pause Multi Action keeps the requested state. On a regular key, both Play/Pause actions still toggle playback. Favorite remains available as a key but is excluded from Multi Actions. Pending commands are bounded and nearby rotations in the same direction are combined.
+
+Status reads wait 1.5 seconds after the previous read completes, without catch-up polling when Spotifast slows down. After failures, retries wait 3, 6, 15 and then 30 seconds. A command, configuration change or wake-up requests a fresh check without waiting for that delay; successful commands refresh status after 250 ms. Status CLI processes have a one-second execution timeout; writes retain five seconds and remain serialized. No automatic status reads run without a visible Spotifast action.
 
 ### Version status
 

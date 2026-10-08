@@ -20,5 +20,6 @@
   "devDependencies": {
     "@elgato/cli": "1.10.1",
     "esbuild": "0.28.2"
-  }
+  },
+  "license": "MIT"
 }

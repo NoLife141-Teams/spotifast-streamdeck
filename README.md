@@ -74,4 +74,10 @@ This repository contains the controller source, icons and bilingual UI. It does 
 
 Repository / Dépôt : [NoLife141-Teams/spotifast-streamdeck](https://github.com/NoLife141-Teams/spotifast-streamdeck).
 
-La licence du projet reste à définir. Les avis de licence des dépendances sont inclus dans le paquet. / The project license is still to be selected. Dependency license notices are included in the installer.
+## License / Licence
+
+Copyright (c) 2026 NoLife141-Teams.
+
+Ce projet est distribué sous la [licence MIT](LICENSE). La licence du projet et les avis de licence des dépendances sont inclus dans le paquet.
+
+This project is distributed under the [MIT license](LICENSE). The project license and dependency license notices are included in the installer.

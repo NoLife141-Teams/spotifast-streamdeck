@@ -195,9 +195,9 @@ var ArtworkCache = class {
     this.fetcher = fetcher;
   }
   isFresh(url, value) {
-    // A visible key may hold an older value after this bounded cache replaces it.
+    // Check the original deadline even when a key already holds this image.
     const cached = this.cache.get(url);
-    return !!value && cached?.value === value && cached.expires > Date.now();
+    return !!value && cached?.value === value && cached.expires > (this.now?.() ?? Date.now());
   }
   async get(url2) {
     if (!isArtworkUrl(url2)) return void 0;

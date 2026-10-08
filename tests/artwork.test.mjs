@@ -255,4 +255,9 @@ test('artwork freshness follows replacement, eviction, negative entries and the 
   cache.cache.get(url).expires = Date.now() - 1; assert.equal(cache.isFresh(url, 'changed'), false);
   cache.cache.set(url, { value: undefined, expires: Date.now() + 30000 }); assert.equal(cache.isFresh(url, undefined), false);
   cache.cache.delete(url); assert.equal(cache.isFresh(url, 'changed'), false);
+  let clock = 99;
+  cache.now = () => clock;
+  cache.cache.set(url, { value: 'injected-clock', expires: 100 });
+  assert.equal(cache.isFresh(url, 'injected-clock'), true);
+  clock = 100; assert.equal(cache.isFresh(url, 'injected-clock'), false);
 });

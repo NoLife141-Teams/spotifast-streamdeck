@@ -36,45 +36,94 @@ export function fitCaption(value, font, { maxSize = 10, minSize = 8.5, maxWidth 
   const text = chars.join('').trimEnd() + '…';
   return { text, size, width: widthOf(text, size, font) };
 }
-function drawLine(line, font, baseline, fill) {
-  if (!line.text) return '';
-  if (supported(font, line.text)) {
-    const outline = font.getPath(line.text, 0, baseline, line.size);
-    const box = outline.getBoundingBox();
-    const x = (SIZE - (box.x2 - box.x1)) / 2 - box.x1;
-    const d = font.getPath(line.text, x, baseline, line.size).toPathData(2);
-    return '<path fill="' + fill + '" d="' + d + '"/>';
-  }
-  return '<text x="36" y="' + baseline + '" text-anchor="middle" font-family="Arial,sans-serif" font-size="' + line.size + '" textLength="' + line.width + '" lengthAdjust="spacingAndGlyphs" fill="' + fill + '">' + xml(line.text) + '</text>';
+// Hold the beginning and end so both are readable; move only overflowing lines.
+export function scrollOffset(width, elapsedMs = 0) {
+  const distance = Math.max(0, width - TEXT_WIDTH);
+  if (!distance) return 0;
+  const hold = 1800, travel = distance / 12 * 1000;
+  const phase = Math.max(0, Number.isFinite(elapsedMs) ? elapsedMs : 0) % (hold * 2 + travel);
+  return Math.min(distance, Math.floor(Math.max(0, phase - hold) / 1000 * 12 * 2) / 2);
 }
-export function captionSvg(cover, title, artists, fonts = {}) {
-  const track = fitCaption(title, fonts.bold, { maxSize: 10, minSize: 9 });
-  const artist = fitCaption(artists, fonts.regular, { maxSize: 9, minSize: 8.5 });
+export function formatRemaining(milliseconds) {
+  if (!Number.isFinite(milliseconds) || milliseconds < 0) return '';
+  const seconds = Math.ceil(milliseconds / 1000), minutes = Math.floor(seconds / 60);
+  const pad = value => String(value).padStart(2, '0');
+  return '-' + (minutes >= 60 ? Math.floor(minutes / 60) + ':' + pad(minutes % 60) : minutes) + ':' + pad(seconds % 60);
+}
+function prepareLine(value, font, sizes, scrollText = false) {
+  let line = fitCaption(value, font, sizes);
+  if (scrollText && line.text !== normalized(value)) {
+    const text = normalized(value);
+    line = { text, size: line.size, width: widthOf(text, line.size, font) };
+  }
+  if (supported(font, line.text) && line.text) {
+    const outline = font.getPath(line.text, 0, 0, line.size), box = outline.getBoundingBox();
+    return { ...line, left: box.x1, inkWidth: box.x2 - box.x1, path: outline.toPathData(2) };
+  }
+  return { ...line, left: 0, inkWidth: line.width };
+}
+function prepareCaption(title, artists, fonts, options) {
+  return {
+    title: normalized(title), artists: normalized(artists), showText: options.showText !== false,
+    track: prepareLine(title, fonts.bold, { maxSize: 10, minSize: 9 }, options.scrollText),
+    artist: prepareLine(artists, fonts.regular, { maxSize: 9, minSize: 8.5 }, options.scrollText)
+  };
+}
+function drawLine(line, baseline, fill, offset = 0, center = SIZE / 2) {
+  if (!line.text) return '';
+  const x = line.width > TEXT_WIDTH ? 6 - line.left - offset : center - line.inkWidth / 2 - line.left;
+  const glyphs = line.path ? '<path fill="' + fill + '" d="' + line.path + '"/>' :
+    '<text x="0" y="0" font-family="Arial,sans-serif" font-size="' + line.size + '" textLength="' + line.width + '" lengthAdjust="spacingAndGlyphs" fill="' + fill + '">' + xml(line.text) + '</text>';
+  return '<g transform="translate(' + x + ' ' + baseline + ')">' + glyphs + '</g>';
+}
+function renderCaption(cover, layout, fonts, { elapsedMs = 0, remainingMs } = {}) {
+  const remaining = formatRemaining(remainingMs);
+  let time = prepareLine(remaining, fonts.regular, { maxSize: 9, minSize: 8.5 });
+  // Keep every digit even if system fonts are unavailable or the track lasts hours.
+  if (time.text !== remaining) {
+    const width = Math.min(TEXT_WIDTH, remaining.length * 5.5);
+    time = { text: remaining, size: 8.5, width, inkWidth: width, left: 0 };
+  }
+  const badgeWidth = Math.max(30, time.width + 8);
   const image = /^data:image\/(?:jpeg|png|webp);base64,[A-Za-z0-9+/=\r\n]+$/.test(cover || '') ?
     '<image x="0" y="0" width="72" height="72" preserveAspectRatio="xMidYMid slice" xlink:href="' + cover + '"/>' : '';
   return '<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="144" height="144" viewBox="0 0 72 72">' +
-    '<title>' + xml(normalized(title)) + '</title><desc>' + xml(normalized(artists)) + '</desc>' +
-    '<defs><clipPath id="caption"><rect x="6" y="44" width="60" height="26"/></clipPath></defs>' +
+    '<title>' + xml(layout.title) + '</title><desc>' + xml(layout.artists) + '</desc>' +
+    '<defs><clipPath id="caption"><rect x="6" y="44" width="60" height="26"/></clipPath><clipPath id="track"><rect x="6" y="44" width="60" height="13"/></clipPath><clipPath id="artist"><rect x="6" y="57" width="60" height="13"/></clipPath></defs>' +
     '<rect width="72" height="72" fill="#202020"/>' + image +
-    '<rect y="42" width="72" height="30" fill="#000" fill-opacity=".84"/>' +
-    '<g clip-path="url(#caption)">' + drawLine(track, fonts.bold, 55, '#fff') + drawLine(artist, fonts.regular, 67, '#dedede') + '</g></svg>';
+    (remaining ? '<rect x="' + (68 - badgeWidth) + '" y="4" width="' + badgeWidth + '" height="14" rx="3" fill="#000" fill-opacity=".84"/>' + drawLine(time, 14, '#fff', 0, 68 - badgeWidth / 2) : '') +
+    (layout.showText ? '<rect y="42" width="72" height="30" fill="#000" fill-opacity=".84"/>' +
+    '<g clip-path="url(#caption)"><g clip-path="url(#track)">' + drawLine(layout.track, 55, '#fff', scrollOffset(layout.track.width, elapsedMs)) +
+    '</g><g clip-path="url(#artist)">' + drawLine(layout.artist, 67, '#dedede', scrollOffset(layout.artist.width, elapsedMs)) + '</g></g>' : '') + '</svg>';
+}
+export function captionSvg(cover, title, artists, fonts = {}, options = {}) {
+  return renderCaption(cover, prepareCaption(title, artists, fonts, options), fonts, options);
 }
 export class ArtworkRenderer {
   fonts;
   fallback;
   cache = new Map();
+  layouts = new Map();
   constructor({ loadFonts = loadSystemFonts, fallbackPath = path.join(process.cwd(), 'imgs', 'music.png') } = {}) {
     this.fonts = Promise.resolve().then(loadFonts).catch(() => ({}));
     this.fallbackPath = fallbackPath;
   }
-  async render(cover, title, artists) {
+  async render(cover, title, artists, options = {}) {
     if (!cover) {
       this.fallback ??= readFile(this.fallbackPath).then(bytes => 'data:image/png;base64,' + bytes.toString('base64')).catch(() => '');
       cover = await this.fallback;
     }
-    const key = JSON.stringify([cover, title, artists]);
+    const fonts = await this.fonts;
+    const layoutKey = JSON.stringify([title, artists, options.showText !== false, options.scrollText === true]);
+    let layout = this.layouts.get(layoutKey);
+    if (!layout) {
+      layout = prepareCaption(title, artists, fonts, options);
+      this.layouts.set(layoutKey, layout);
+      while (this.layouts.size > 8) this.layouts.delete(this.layouts.keys().next().value);
+    }
+    const key = JSON.stringify([cover, layoutKey, layout.showText ? scrollOffset(layout.track.width, options.elapsedMs) : 0, layout.showText ? scrollOffset(layout.artist.width, options.elapsedMs) : 0, formatRemaining(options.remainingMs)]);
     if (this.cache.has(key)) return this.cache.get(key);
-    const svg = captionSvg(cover, title, artists, await this.fonts);
+    const svg = renderCaption(cover, layout, fonts, options);
     const image = 'data:image/svg+xml;base64,' + Buffer.from(svg).toString('base64');
     this.cache.set(key, image);
     while (this.cache.size > 8) this.cache.delete(this.cache.keys().next().value);

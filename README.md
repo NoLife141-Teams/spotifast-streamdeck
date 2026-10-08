@@ -26,6 +26,8 @@ Les multi-actions peuvent définir explicitement Lecture/Pause, Aléatoire activ
 
 ### État de la version
 
+La version 0.2.3 en préparation ajoute le défilement des titres et noms d’artistes trop longs sur **Morceau et pochette**, ainsi qu’un compteur du temps restant en haut de la touche. Les textes courts restent immobiles. Le compteur se fige en pause et disparaît si la durée est inconnue. Les options **Faire défiler les titres et noms d’artistes longs** et **Afficher le temps restant du morceau** sont activées par défaut et peuvent être désactivées séparément; le compteur peut aussi s’afficher sans les légendes.
+
 Version 0.2.2 corrige les constats R01 à R13 : états des boutons synchronisés, multi-actions explicites, conservation des réglages, file de commandes limitée, erreurs localisées, légendes Unicode ajustées et pochettes téléchargées sans bloquer les mises à jour. Les identifiants des actions sont conservés. L’ouverture d’une playlist depuis un lien Spotify a été testée par l’utilisateur. Les tests couvrent Node 20 et 22, les deux langues et le SDK Elgato; la validation du paquet Elgato réussit. Les molettes nécessitent un Stream Deck +; leur fonctionnement physique reste à vérifier sur ce modèle.
 
 ## English
@@ -50,6 +52,8 @@ Multi Actions can explicitly set Play/Pause, Shuffle on/off, and Repeat off/cont
 
 ### Version status
 
+The upcoming 0.2.3 version adds scrolling for long titles and artist names on **Track and artwork**, plus a remaining-time counter at the top of the key. Short text stays stationary. The counter freezes when paused and hides when duration is unknown. **Scroll long titles and artist names** and **Show the remaining track time** default to enabled and can be disabled separately; the timer can also appear without captions.
+
 Version 0.2.2 addresses review findings R01–R13: synchronized button states, explicit Multi Actions, preserved settings, bounded command queue, localized errors, fitted Unicode captions and background artwork downloads. Existing action identifiers are preserved. A user has successfully tested opening a playlist from a Spotify link. Tests cover Node 20 and 22, both languages and the Elgato SDK; Elgato package validation passes. Dial controls require a Stream Deck + and still need a hardware test on that model.
 
 ## Development / Développement
@@ -71,6 +75,8 @@ node scripts/preview.mjs
 ```
 
 Open `http://127.0.0.1:4317/?lang=en` or `?lang=fr` to preview settings with a simulated Stream Deck connection. The preview does not send playback commands.
+
+Add `&action=nowplaying` to preview the scrolling and timer settings. Run `node scripts/artwork-preview.mjs` and open `http://127.0.0.1:4318/` for an animated preview at actual key size and twice that size. Its playback controls only affect the preview.
 
 The plugin communicates with the running Spotifast instance through its documented CLI. Artwork is fetched from approved Spotify image hosts. Authentication remains in Spotifast.
 

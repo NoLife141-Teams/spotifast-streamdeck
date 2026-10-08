@@ -11,7 +11,7 @@ function key(id = 'nowplaying', instance = id) {
     async setState(value) { this.states.push(value); }, async setImage(value) { this.images.push(value); }, async setTitle(value) { this.titles.push(value); }, async showAlert() { this.alerts++; } };
 }
 async function runtime(options = {}) {
-  const callbacks = {}, messages = [], warnings = [], errors = [], timeouts = new Map();
+  const callbacks = {}, messages = [], warnings = [], errors = [], timeouts = new Map(), intervals = new Map();
   const client = { customPath: '', data: { state: 'paused', title: '', artists: '', volume: 50, repeat: 'off', shuffle: false, saved: 'no', artUrl: '' }, calls: [], reads: 0,
     configure(p = '') { this.customPath = p; },
     async snapshot() { this.reads++; if (this.snapshotError) throw this.snapshotError; return { ...this.data }; },
@@ -24,12 +24,12 @@ async function runtime(options = {}) {
     system: { onSystemDidWakeUp: cb => callbacks.wake = cb }, logger: { info() {}, warn(value) { warnings.push(value); }, error(error) { errors.push(error); } }
   };
   for (const name of ['onWillAppear', 'onWillDisappear', 'onKeyDown', 'onDialRotate', 'onDialDown', 'onTouchTap']) sdk.actions[name] = cb => callbacks[name] = cb;
-  const timers = { setTimeout(cb) { const id = {}; timeouts.set(id, cb); return id; }, clearTimeout(id) { timeouts.delete(id); }, setInterval() {}, clearInterval() {} };
+  const timers = { setTimeout(cb) { const id = {}; timeouts.set(id, cb); return id; }, clearTimeout(id) { timeouts.delete(id); }, setInterval(cb, period) { const id = {}; intervals.set(id, { cb, period }); return id; }, clearInterval(id) { intervals.delete(id); } };
   const artworkRenderer = { async render(image, title, artists) { return 'caption:' + title.replace(/\s+/g, ' ') + '|' + artists + '|' + (image || ''); } };
   const api = createRuntime(sdk, { client, artwork: { async get() {} }, artworkRenderer, timers, ...options });
   await api.start();
   const select = action => { if (sdk.ui.action) callbacks.uiDisappear({ action: sdk.ui.action }); sdk.ui.action = action; if (action) callbacks.uiAppear({ action }); };
-  return { api, client, sdk, callbacks, messages, warnings, errors, select, timeouts };
+  return { api, client, sdk, callbacks, messages, warnings, errors, select, timeouts, intervals };
 }
 
 test('labels follow English/French, including wake-up, without changing action settings', async () => {
@@ -114,4 +114,51 @@ test('artwork checkbox and new profiles use the current cover without native tit
 test('a delayed render is discarded when its action disappears', async () => {
   const delayed = deferred(); const { api, callbacks } = await runtime({ artworkRenderer: { render: () => delayed.promise } }); const action = key(); api.visible.set(action.id, { action, settings: {} });
   const pending = api.refresh(); await flush(); callbacks.onWillDisappear({ action }); delayed.resolve('old-image'); await pending; assert.equal(action.images.length, 0);
+});
+
+test('animation advances captions and countdown without extra CLI reads, and resets for a new track', async () => {
+  let clock = 1000;
+  const frames = [];
+  const { api, client, callbacks, intervals } = await runtime({ now: () => clock, artworkRenderer: { async render(image, title, artists, options) { frames.push({ title, ...options }); return JSON.stringify([title, options]); } } });
+  client.data = { ...client.data, state: 'playing', title: 'Very long title', artists: 'Very long artist', position: 10000, duration: 120000 };
+  const action = key(); callbacks.onWillAppear({ action, payload: { settings: {} } }); await api.refresh();
+  const reads = client.reads;
+  assert.equal(frames.at(-1).elapsedMs, 0);
+  assert.equal(frames.at(-1).remainingMs, 110000);
+  assert.ok([...intervals.values()].some(timer => timer.period === 200));
+  const titles = action.titles.length;
+  clock += 3200; await api.animate();
+  assert.equal(frames.at(-1).elapsedMs, 3200);
+  assert.equal(frames.at(-1).remainingMs, 106800);
+  assert.equal(client.reads, reads);
+  assert.equal(action.titles.length, titles, 'Animation should update only the image');
+  client.data = { ...client.data, title: 'New title', position: 0 }; await api.refresh();
+  assert.equal(frames.at(-1).elapsedMs, 0);
+  assert.equal(frames.at(-1).remainingMs, 120000);
+  callbacks.onWillDisappear({ action }); assert.ok(![...intervals.values()].some(timer => timer.period === 200));
+  api.stop(); assert.equal(intervals.size, 0);
+});
+
+test('paused countdown is stable; timer, text and animation can be disabled independently', async () => {
+  let clock = 0;
+  const frames = [];
+  const { api, client, callbacks, intervals } = await runtime({ now: () => clock, artworkRenderer: { async render(image, title, artists, options) { frames.push(options); return JSON.stringify(options); } } });
+  const action = key(); const entry = { action, settings: { showText: false } }; api.visible.set(action.id, entry);
+  client.data = { ...client.data, state: 'paused', title: 'Paused', position: 10000, duration: 120000 };
+  await api.refresh(); clock += 4000; await api.animate();
+  assert.equal(frames.at(-1).remainingMs, 110000); assert.equal(frames.at(-1).showText, false);
+  callbacks.settings({ action, payload: { settings: { showText: true, scrollText: false, showRemaining: false } } }); await api.refresh();
+  assert.equal(frames.at(-1).scrollText, false); assert.equal(frames.at(-1).remainingMs, undefined);
+  assert.ok(![...intervals.values()].some(timer => timer.period === 200));
+  client.snapshotError = new Error('offline'); await api.refresh(); const count = frames.length; await api.animate(); assert.equal(frames.length, count);
+  api.stop();
+});
+
+test('slow animation frames are not queued and cannot overwrite a newer track', async () => {
+  const waiting = deferred(); let delayed = false;
+  const { api, client } = await runtime({ artworkRenderer: { render: (image, title) => delayed ? waiting.promise : Promise.resolve(title) } });
+  const action = key(); api.visible.set(action.id, { action, settings: {} }); client.data.title = 'Old'; await api.refresh();
+  delayed = true; const first = api.animate(); const second = api.animate(); assert.equal(first, second); await flush();
+  delayed = false; client.data.title = 'New'; await api.refresh(); waiting.resolve('Stale'); await first;
+  assert.equal(action.images.at(-1), 'New'); assert.ok(!action.images.includes('Stale')); api.stop();
 });

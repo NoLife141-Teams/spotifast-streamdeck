@@ -85,3 +85,26 @@ test('lost socket disables edits and displays a localized recovery message', () 
   const { element, socket, sent } = inspector(); socket.onerror(); assert.equal(element('uri').disabled, true); assert.equal(element('language').disabled, true); assert.match(element('status').textContent, /Connection to Stream Deck was lost/);
   const before = socket.messages.length; element('uri').onchange(); element('language').onchange(); element('check').onclick(); assert.equal(socket.messages.length, before); assert.equal(sent('setSettings').length, 0);
 });
+
+test('artwork scrolling and remaining time default on and preserve each other when edited', () => {
+  const { element, sent, receive } = inspector({ action: 'nowplaying' });
+  assert.equal(element('text').hidden, false);
+  assert.equal(element('scrollText').checked, true);
+  assert.equal(element('showRemaining').checked, true);
+  element('scrollText').checked = false; element('scrollText').onchange();
+  const saved = sent('setSettings').at(-1).payload; receive('didReceiveSettings', { settings: saved });
+  element('showRemaining').checked = false; element('showRemaining').onchange();
+  assert.equal(sent('setSettings').at(-1).payload.scrollText, false);
+  assert.equal(sent('setSettings').at(-1).payload.showRemaining, false);
+  assert.equal(sent('setSettings').at(-1).payload.preserved, 'keep');
+});
+
+test('hiding captions disables scrolling but leaves remaining time available', () => {
+  const { element, receive } = inspector({ action: 'nowplaying', settings: { showText: false, scrollText: true, showRemaining: true } });
+  assert.equal(element('scrollText').disabled, true);
+  assert.equal(element('showRemaining').disabled, false);
+  receive('didReceiveSettings', { settings: { showText: true, scrollText: false, showRemaining: false } });
+  assert.equal(element('scrollText').disabled, false);
+  assert.equal(element('scrollText').checked, false);
+  assert.equal(element('showRemaining').checked, false);
+});

@@ -3,6 +3,7 @@ let globalsReady = false, socketFailed = false, globalPending = {}, localPending
 let translate = SpotifastI18n.createTranslator('en');
 let status = { key: 'checking' };
 const element = id => document.getElementById(id);
+const checkboxes = ['showText', 'scrollText', 'showRemaining'];
 const connected = () => !socketFailed && socket?.readyState === WebSocket.OPEN;
 function send(event, payload) {
   if (!connected()) return false;
@@ -19,7 +20,7 @@ function plugin(type) {
 function controls() {
   const globalDisabled = !connected() || !globalsReady || Object.keys(globalPending).length > 0;
   for (const id of ['language', 'exe', 'check', 'open']) element(id).disabled = globalDisabled;
-  for (const id of ['uri', 'step', 'showText']) element(id).disabled = !connected();
+  for (const id of ['uri', 'step', ...checkboxes]) element(id).disabled = !connected() || (id === 'scrollText' && settings.showText === false);
 }
 function renderStatus() {
   element('status').textContent = status.key ? translate(status.key, { title: status.trackTitle }) : status.message;
@@ -41,10 +42,10 @@ function normalizeStep(value) {
   return Number.isFinite(number) ? Math.max(1, Math.min(25, Math.round(number))) : 5;
 }
 function renderLocalSettings() {
-  for (const [id, value] of Object.entries({ uri: settings.uri ?? '', step: normalizeStep(settings.step ?? 5), showText: settings.showText !== false })) {
+  for (const [id, value] of Object.entries({ uri: settings.uri ?? '', step: normalizeStep(settings.step ?? 5), ...Object.fromEntries(checkboxes.map(id => [id, settings[id] !== false])) })) {
     const input = element(id);
     if (document.activeElement === input) continue;
-    if (id === 'showText') input.checked = value;
+    if (checkboxes.includes(id)) input.checked = value;
     else input.value = value;
   }
 }
@@ -94,6 +95,7 @@ window.connectElgatoStreamDeckSocket = (port, propertyInspectorUUID, registerEve
     if (message.event === 'didReceiveSettings') {
       settings = mergeReceived(message.payload.settings ?? {}, localPending);
       renderLocalSettings();
+      controls();
     }
     if (message.event === 'sendToPropertyInspector' && message.payload?.type === 'status') {
       if (message.payload.requestId !== undefined && message.payload.requestId !== activeRequestId) return;
@@ -118,13 +120,14 @@ element('exe').onchange = () => saveGlobal('exePath', element('exe').value.trim(
 element('language').onchange = () => saveGlobal('language', element('language').value);
 function save(id) {
   if (!connected()) return;
-  const value = id === 'showText' ? element(id).checked : id === 'step' ? normalizeStep(element(id).value) : element(id).value.trim();
-  if (id !== 'showText') element(id).value = value;
+  const value = checkboxes.includes(id) ? element(id).checked : id === 'step' ? normalizeStep(element(id).value) : element(id).value.trim();
+  if (!checkboxes.includes(id)) element(id).value = value;
   localPending[id] = value;
   settings = { ...settings, [id]: value };
+  controls();
   send('setSettings', settings);
   send('getSettings');
 }
-for (const id of ['uri', 'step', 'showText']) element(id).onchange = () => save(id);
+for (const id of ['uri', 'step', ...checkboxes]) element(id).onchange = () => save(id);
 renderLanguage();
 controls();

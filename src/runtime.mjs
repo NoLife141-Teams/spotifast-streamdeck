@@ -1,15 +1,16 @@
 import { ArtworkRenderer } from './artwork.mjs';
-import { UUID, actions, Spotifast, ArtworkCache, shortText, commandFor } from './core.mjs';
+import { UUID, actions, Spotifast, ArtworkCache, shortText, commandFor, remainingTime } from './core.mjs';
 import translations from '../streamdeck/ui/i18n.js';
 
 export function createRuntime(streamDeck, {
   client = new Spotifast(), artwork = new ArtworkCache(), artworkRenderer = new ArtworkRenderer(),
-  timers = { setTimeout, clearTimeout, setInterval, clearInterval }
+  timers = { setTimeout, clearTimeout, setInterval, clearInterval }, now = () => performance.now()
 } = {}) {
   let t = translations.createTranslator(translations.resolveLanguage('auto', streamDeck.info.application.language));
   const visible = new Map(), artworkRequests = new Map();
   let state, online = false, refreshing, refreshAgain = false, configured = false, configuration = 0;
   let lastError = '', uiSession = 0, uiRevision = 0, refreshTimer, interval;
+  let sampledAt = 0, animationInterval, animating, started = false;
   let resolveConfigured;
   const ready = new Promise(resolve => { resolveConfigured = resolve; });
   const suffix = action => action.manifestId.slice(UUID.length + 1);
@@ -40,7 +41,7 @@ export function createRuntime(streamDeck, {
   async function render(entry, image, imageUrl) {
     const snapshot = state, connected = online, config = configuration;
     const revision = entry.renderRevision = (entry.renderRevision || 0) + 1;
-    const current = () => visible.get(entry.action.id) === entry && revision === entry.renderRevision && snapshot === state && connected === online && config === configuration;
+    const current = () => started && visible.get(entry.action.id) === entry && revision === entry.renderRevision && snapshot === state && connected === online && config === configuration;
     const { action, settings } = entry;
     const artUrl = connected ? snapshot.artUrl : '';
     if (entry.artUrl !== artUrl) { entry.artUrl = artUrl; entry.artImage = undefined; }
@@ -48,6 +49,7 @@ export function createRuntime(streamDeck, {
     const id = suffix(action);
     let title = '', picture, feedback, buttonState;
     if (!connected) {
+      entry.captionKey = undefined;
       title = t('openButton');
       if (id === 'nowplaying') picture = 'imgs/music.png';
       feedback = { title: 'Spotifast', value: t('offline'), indicator: 0, icon: 'imgs/music.png' };
@@ -59,7 +61,14 @@ export function createRuntime(streamDeck, {
       if (id === 'like') buttonState = snapshot.saved === 'yes' ? 1 : 0;
       if (id === 'nowplaying') {
         picture = entry.artImage ?? 'imgs/music.png';
-        if (settings.showText !== false) picture = await artworkRenderer.render(entry.artImage, snapshot.title || t('noTrack'), snapshot.title ? snapshot.artists : '');
+        const clock = now();
+        const captionKey = JSON.stringify([snapshot.title, snapshot.artists, snapshot.album, snapshot.duration, snapshot.artUrl, settings.showText, settings.scrollText]);
+        if (entry.captionKey !== captionKey) { entry.captionKey = captionKey; entry.captionStartedAt = clock; }
+        const remainingMs = settings.showRemaining !== false ? remainingTime(snapshot, clock - sampledAt) : undefined;
+        if (settings.showText !== false || remainingMs !== undefined) picture = await artworkRenderer.render(entry.artImage, snapshot.title || t('noTrack'), snapshot.title ? snapshot.artists : '', {
+          showText: settings.showText !== false, scrollText: settings.scrollText !== false,
+          elapsedMs: Math.max(0, clock - entry.captionStartedAt), remainingMs
+        });
       }
       if (['volumeup', 'volumedown', 'mute'].includes(id)) title = snapshot.volume === null ? '' : snapshot.volume + '%';
       if (id === 'volume') feedback = { title: shortText(snapshot.title || t('volumeTitle'), 24), value: snapshot.volume === null ? '—' : snapshot.volume + '%', indicator: snapshot.volume ?? 0, icon: entry.artImage ?? 'imgs/volumeup.png' };
@@ -71,13 +80,26 @@ export function createRuntime(streamDeck, {
       if (!current()) return;
       if (picture !== undefined) await action.setImage(picture);
       if (!current()) return;
-      await action.setTitle(title);
+      if (entry.signature === undefined || entry.renderedTitle !== title) await action.setTitle(title);
     } else if (feedback) await action.setFeedback(feedback);
-    if (current()) entry.signature = signature;
+    if (current()) { entry.signature = signature; entry.renderedTitle = title; }
   }
   async function renderEntries(entries, image, url) {
     const results = await Promise.allSettled(entries.map(entry => render(entry, image, url)));
     for (const result of results) if (result.status === 'rejected') report(result.reason);
+  }
+  const animatedEntry = entry => suffix(entry.action) === 'nowplaying' &&
+    ((entry.settings.showText !== false && entry.settings.scrollText !== false) || entry.settings.showRemaining !== false);
+  function animate() {
+    if (animating) return animating;
+    if (!started || !online) return Promise.resolve();
+    animating = renderEntries([...visible.values()].filter(animatedEntry)).finally(() => { animating = undefined; });
+    return animating;
+  }
+  function updateAnimationTimer() {
+    const enabled = started && online && [...visible.values()].some(animatedEntry);
+    if (enabled && animationInterval === undefined) animationInterval = timers.setInterval(() => animate().catch(report), 200);
+    if (!enabled && animationInterval !== undefined) { timers.clearInterval(animationInterval); animationInterval = undefined; }
   }
   function requestArtwork() {
     const url = online && state?.artUrl;
@@ -98,7 +120,7 @@ export function createRuntime(streamDeck, {
         try {
           const next = await client.snapshot();
           if (config !== configuration) { refreshAgain = true; continue; }
-          state = next; online = true; lastError = '';
+          state = next; sampledAt = now(); online = true; lastError = '';
         } catch (error) {
           if (config !== configuration) { refreshAgain = true; continue; }
           online = false;
@@ -107,6 +129,7 @@ export function createRuntime(streamDeck, {
           lastError = message;
         }
         await renderEntries([...visible.values()]);
+        updateAnimationTimer();
         requestArtwork();
       } while (refreshAgain && visible.size);
     })().finally(() => { refreshing = undefined; });
@@ -158,10 +181,11 @@ export function createRuntime(streamDeck, {
   streamDeck.actions.onWillDisappear(event => {
     const entry = visible.get(event.action.id); if (entry) invalidate(entry);
     visible.delete(event.action.id);
+    updateAnimationTimer();
   });
   streamDeck.settings.onDidReceiveSettings(event => {
     const entry = visible.get(event.action.id);
-    if (entry) { entry.settings = event.payload.settings ?? {}; invalidate(entry); refresh().catch(report); }
+    if (entry) { entry.settings = event.payload.settings ?? {}; invalidate(entry); updateAnimationTimer(); refresh().catch(report); }
   });
   streamDeck.settings.onDidReceiveGlobalSettings(event => { configure(event.settings); refresh().catch(report); });
   streamDeck.actions.onKeyDown(event => {
@@ -185,14 +209,15 @@ export function createRuntime(streamDeck, {
     refresh().catch(report);
   });
   return {
-    client, visible, artworkRequests, configure, render, refresh, perform, performInvalid, inspectorRequest,
+    client, visible, artworkRequests, configure, render, refresh, animate, perform, performInvalid, inspectorRequest,
     async start() {
       await streamDeck.connect();
+      started = true;
       configure(await streamDeck.settings.getGlobalSettings());
       streamDeck.logger.info(t('started', { count: actions.length }));
       await refresh();
       interval = timers.setInterval(() => refresh().catch(report), 1500);
     },
-    stop() { timers.clearTimeout(refreshTimer); timers.clearInterval(interval); }
+    stop() { started = false; timers.clearTimeout(refreshTimer); timers.clearInterval(interval); timers.clearInterval(animationInterval); animationInterval = undefined; }
   };
 }

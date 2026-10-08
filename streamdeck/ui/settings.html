@@ -17,7 +17,12 @@ small{display:block;color:#bbb;margin-top:5px;line-height:1.4}[hidden]{display:n
 <button id="open" data-i18n="open">Open Spotifast</button><button id="check" data-i18n="check">Check connection</button>
 <section id="playlist" hidden><label for="uri" data-i18n="playlistLabel">Playlist, album or track link</label><input id="uri" placeholder="https://open.spotify.com/playlist/…"><small data-i18n="playlistHint">Copy a Spotify link or use a spotify:playlist:… URI.</small></section>
 <section id="volume" hidden><label for="step" data-i18n="volumeLabel">Volume step (%)</label><input id="step" type="number" min="1" max="25" value="5"></section>
-<section id="text" hidden><label><input id="showText" type="checkbox" checked> <span data-i18n="showText">Show the title and artist on the artwork</span></label></section>
+<section id="text" hidden>
+<label><input id="showText" type="checkbox" checked> <span data-i18n="showText">Show the title and artist on the artwork</span></label>
+<label><input id="scrollText" type="checkbox" checked> <span data-i18n="scrollText">Scroll long titles and artist names</span></label>
+<label><input id="showRemaining" type="checkbox" checked> <span data-i18n="showRemaining">Show the remaining track time</span></label>
+<small data-i18n="remainingHint">The countdown pauses with playback and hides when the duration is unknown.</small>
+</section>
 <label for="exe" data-i18n="executableLabel">Spotifast location (optional)</label><input id="exe" data-i18n-placeholder="executablePlaceholder" placeholder="Automatic detection"><small data-i18n="executableHint">Applies to all buttons. Leave empty for the standard Windows installation.</small>
 <script src="i18n.js"></script><script src="settings.js"></script>
 </body></html>

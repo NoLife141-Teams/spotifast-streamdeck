@@ -2,7 +2,7 @@
   "$schema": "https://schemas.elgato.com/streamdeck/plugins/manifest.json",
   "UUID": "rocks.spotifast.streamdeck",
   "Name": "Spotifast",
-  "Version": "0.2.3.0",
+  "Version": "0.2.4.0",
   "Author": "NoLife141-Teams",
   "Description": "Local Spotifast controls: playback, artwork, favorites, playlists and volume.",
   "Category": "Spotifast",

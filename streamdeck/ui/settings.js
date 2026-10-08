@@ -26,6 +26,14 @@ function renderStatus() {
   element('status').textContent = status.key ? translate(status.key, { title: status.trackTitle }) : status.message;
   element('status').style.borderColor = status.online === true ? '#a3e635' : status.online === false ? '#fbbf24' : '#999';
 }
+function renderUriValidation() {
+  const input = element('uri'), value = input.value.trim();
+  const valid = Boolean(SpotifastSpotify.spotifyUri(value)), invalid = Boolean(value) && !valid;
+  input.setAttribute('aria-invalid', String(invalid));
+  input.style.borderColor = invalid ? '#fbbf24' : '';
+  element('uriFeedback').textContent = translate(invalid ? 'invalidUri' : valid ? 'validUri' : 'playlistHint');
+  element('uriFeedback').style.color = invalid ? '#fbbf24' : '#bbb';
+}
 function renderLanguage() {
   const language = SpotifastI18n.resolveLanguage(globalSettings.language, hostLanguage);
   translate = SpotifastI18n.createTranslator(language);
@@ -36,6 +44,7 @@ function renderLanguage() {
   const id = actionId?.split('.').pop();
   element('help').textContent = translate(id === 'volume' ? 'dialHelp' : id === 'nowplaying' ? 'artworkHelp' : id === 'like' ? 'favoriteHelp' : 'help');
   renderStatus();
+  renderUriValidation();
 }
 function normalizeStep(value) {
   const number = String(value).trim() === '' ? 5 : Number(value);
@@ -49,6 +58,7 @@ function renderLocalSettings() {
     if (checkboxes.includes(id)) input.checked = value;
     else input.value = value;
   }
+  renderUriValidation();
 }
 function mergeReceived(incoming, pending) {
   for (const key of Object.keys(pending)) if (incoming[key] === pending[key]) delete pending[key];
@@ -123,6 +133,7 @@ function save(id) {
   if (!connected()) return;
   const value = checkboxes.includes(id) ? element(id).checked : id === 'step' ? normalizeStep(element(id).value) : id === 'captionLayout' ? normalizeCaptionLayout(element(id).value) : element(id).value.trim();
   if (!checkboxes.includes(id)) element(id).value = value;
+  if (id === 'uri') renderUriValidation();
   localPending[id] = value;
   settings = { ...settings, [id]: value };
   controls();
@@ -130,5 +141,6 @@ function save(id) {
   send('getSettings');
 }
 for (const id of ['uri', 'step', 'captionLayout', ...checkboxes]) element(id).onchange = () => save(id);
+element('uri').oninput = renderUriValidation;
 renderLanguage();
 controls();

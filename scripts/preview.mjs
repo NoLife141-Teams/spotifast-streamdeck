@@ -29,9 +29,10 @@ const server = http.createServer(async (request,response)=>{
       let html = await readFile(new URL('settings.html',ui),'utf8');
       html = html.replace('<script src="i18n.js">',mock(language)+'<script src="i18n.js">').replace('</body>',bootstrap(language, action)+'</body>');
       response.writeHead(200,{'content-type':'text/html; charset=utf-8'});response.end(html);
-    } else if(['/settings.js','/i18n.js'].includes(url.pathname)) {
+    } else if(['/settings.js','/i18n.js','/spotify.js'].includes(url.pathname)) {
       response.writeHead(200,{'content-type':'text/javascript; charset=utf-8'});response.end(await readFile(new URL(url.pathname.slice(1),ui)));
     } else {response.writeHead(404);response.end();}
   } catch(error) {response.writeHead(500);response.end(error.message);}
 });
-server.listen(4317,'127.0.0.1',()=>console.log('Preview: http://127.0.0.1:4317/?lang=en or ?lang=fr'));
+const port = Number(process.env.SPOTIFAST_PREVIEW_PORT || 4317);
+server.listen(port,'127.0.0.1',()=>console.log(`Preview: http://127.0.0.1:${port}/?lang=en or ?lang=fr`));

@@ -16,7 +16,7 @@ Il contrôle **Spotifast**, qui doit être installé, ouvert et connecté à Spo
 2. Installer Stream Deck 7.1 ou plus récent. Le plugin utilise le SDK Elgato 3.x et nécessite cette version pour ses réglages.
 3. Télécharger le fichier .streamDeckPlugin dans les [versions GitHub](https://github.com/NoLife141-Teams/spotifast-streamdeck/releases), puis ouvrir le fichier.
 4. Ajouter les actions Spotifast aux touches.
-5. Dans **Lancer une playlist**, coller un lien Spotify ou une URI `spotify:playlist:…`. Les liens d’album et de morceau sont également acceptés.
+5. Dans **Lancer une playlist**, coller un lien Spotify ou une URI `spotify:playlist:…`. Les liens d’album et de morceau sont également acceptés. Les réglages indiquent immédiatement si le format est reconnu; une saisie invalide est signalée sous le champ. Cette vérification ne confirme pas l’existence du contenu ni sa disponibilité sur ton compte.
 
 La fenêtre de réglages suit la langue de Stream Deck. Le choix **Langue → English / Français** change les réglages et les messages du plugin pour toutes les touches. Les noms de la liste d’actions suivent la langue de Stream Deck.
 
@@ -50,7 +50,7 @@ It controls **Spotifast**, which must be installed, open and signed in to Spotif
 2. Install Stream Deck 7.1 or newer. The plugin uses Elgato SDK 3.x and requires this version for its settings.
 3. Download the .streamDeckPlugin installer from [GitHub Releases](https://github.com/NoLife141-Teams/spotifast-streamdeck/releases), then open it.
 4. Add Spotifast actions to your keys.
-5. For **Play a playlist**, paste a Spotify link or a `spotify:playlist:…` URI. Album and track links are also supported.
+5. For **Play a playlist**, paste a Spotify link or a `spotify:playlist:…` URI. Album and track links are also supported. Settings immediately show whether the format is recognized; invalid input is flagged below the field. This check does not confirm that the content exists or is available to your account.
 
 Settings follow the Stream Deck language. **Language → English / Français** changes the settings and runtime messages for all plugin buttons. Names in the action list follow the Stream Deck language.
 

@@ -4,12 +4,13 @@ const fs = require('node:fs');
 const path = require('node:path');
 const vm = require('node:vm');
 const translations = require('./ui/i18n.js');
+const spotifyLinks = require('./ui/spotify.js');
 const source = fs.readFileSync(process.argv[2] || path.join(__dirname, 'ui/settings.js'), 'utf8');
 function inspector({ action = 'playlist', settings = {}, globals = {}, ready = true } = {}) {
-  const elements = new Map(); const element = id => { if (!elements.has(id)) elements.set(id, { value: '', checked: false, hidden: false, disabled: false, style: {} }); return elements.get(id); };
+  const elements = new Map(); const element = id => { if (!elements.has(id)) elements.set(id, { value: '', checked: false, hidden: false, disabled: false, style: {}, attributes: {}, setAttribute(name, value) { this.attributes[name] = value; } }); return elements.get(id); };
   class Socket { static OPEN = 1; constructor() { this.readyState = 0; this.messages = []; Socket.last = this; } send(text) { this.messages.push(JSON.parse(text)); } }
   const window = {}, document = { activeElement: null, documentElement: {}, getElementById: element, querySelectorAll: () => [] };
-  vm.runInNewContext(source, { window, document, WebSocket: Socket, SpotifastI18n: translations });
+  vm.runInNewContext(source, { window, document, WebSocket: Socket, SpotifastI18n: translations, SpotifastSpotify: spotifyLinks });
   window.connectElgatoStreamDeckSocket(28196, 'live-inspector', 'registerPropertyInspector', '{}', JSON.stringify({ action: 'rocks.spotifast.streamdeck.' + action, context: 'different-instance', payload: { settings: { uri: 'spotify:playlist:Old', step: 5, showText: true, preserved: 'keep', ...settings } } }));
   const socket = Socket.last; socket.readyState = Socket.OPEN; socket.onopen();
   const receive = (event, payload) => socket.onmessage({ data: JSON.stringify({ event, payload }) });
@@ -123,4 +124,52 @@ test('one-line layout is the default and changing layouts preserves all other se
   element('showText').checked = false; element('showText').onchange();
   assert.equal(sent('setSettings').at(-1).payload.captionLayout, 'compact');
   assert.equal(element('captionLayout').disabled, true);
+});
+
+test('Spotify drafts are validated on input without saving or sending playback commands', () => {
+  const { element, socket, sent } = inspector();
+  const initialMessages = socket.messages.length, connectionStatus = element('status').textContent;
+  for (const [value, invalid, message] of [
+    ['https://example.com/playlist/ABC123', 'true', /Add a valid Spotify/],
+    ['https://open.spotify.com/intl-fr/album/ABC123?si=shared', 'false', /format recognized/],
+    ['spotify:track:ABC123', 'false', /format recognized/],
+    ['   ', 'false', /Copy a Spotify link/]
+  ]) {
+    element('uri').value = value; element('uri').oninput();
+    assert.equal(element('uri').attributes['aria-invalid'], invalid);
+    assert.match(element('uriFeedback').textContent, message);
+    assert.equal(element('status').textContent, connectionStatus);
+  }
+  assert.equal(socket.messages.length, initialMessages);
+  assert.equal(sent('setSettings').length, 0);
+});
+
+test('stored links and focused drafts retain localized validation through settings updates', () => {
+  const { element, receive, sent, document } = inspector({ settings: { uri: 'invalid link' }, globals: { language: 'fr' } });
+  assert.equal(element('uri').attributes['aria-invalid'], 'true');
+  assert.match(element('uriFeedback').textContent, /Ajoute un lien/);
+  element('language').value = 'en'; element('language').onchange();
+  receive('didReceiveGlobalSettings', { settings: sent('setGlobalSettings').at(-1).payload });
+  assert.match(element('uriFeedback').textContent, /Add a valid Spotify/);
+  document.activeElement = element('uri'); element('uri').value = 'spotify:track:Draft123'; element('uri').oninput();
+  receive('didReceiveSettings', { settings: { uri: 'invalid remote value', preserved: 'keep' } });
+  assert.equal(element('uri').value, 'spotify:track:Draft123');
+  assert.equal(element('uri').attributes['aria-invalid'], 'false');
+  assert.match(element('uriFeedback').textContent, /format recognized/);
+  document.activeElement = null;
+  receive('didReceiveSettings', { settings: { uri: 'https://wrong.test/link' } });
+  assert.equal(element('uri').attributes['aria-invalid'], 'true');
+});
+
+test('link feedback updates after trimming, saving and clearing a setting', () => {
+  const { element, receive, sent } = inspector();
+  element('uri').value = '  spotify:playlist:ABC123  '; element('uri').onchange();
+  const saved = sent('setSettings').at(-1).payload;
+  assert.equal(saved.uri, 'spotify:playlist:ABC123'); assert.equal(saved.preserved, 'keep');
+  receive('didReceiveSettings', { settings: saved });
+  assert.match(element('uriFeedback').textContent, /format recognized/);
+  element('uri').value = ''; element('uri').onchange();
+  assert.equal(sent('setSettings').at(-1).payload.uri, '');
+  assert.equal(element('uri').attributes['aria-invalid'], 'false');
+  assert.match(element('uriFeedback').textContent, /Copy a Spotify link/);
 });

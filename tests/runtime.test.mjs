@@ -25,7 +25,7 @@ async function runtime(options = {}) {
   };
   for (const name of ['onWillAppear', 'onWillDisappear', 'onKeyDown', 'onDialRotate', 'onDialDown', 'onTouchTap']) sdk.actions[name] = cb => callbacks[name] = cb;
   const timers = { setTimeout(cb) { const id = {}; timeouts.set(id, cb); return id; }, clearTimeout(id) { timeouts.delete(id); }, setInterval(cb, period) { const id = {}; intervals.set(id, { cb, period }); return id; }, clearInterval(id) { intervals.delete(id); } };
-  const artworkRenderer = { async render(image, title, artists) { return 'caption:' + title.replace(/\s+/g, ' ') + '|' + artists + '|' + (image || ''); } };
+  const artworkRenderer = { async render(image, title, artists, options) { return options.showText === false ? 'control:' + options.playbackState + '|' + (image || '') : 'caption:' + title.replace(/\s+/g, ' ') + '|' + artists + '|' + (image || ''); } };
   const api = createRuntime(sdk, { client, artwork: { async get() {} }, artworkRenderer, timers, ...options });
   await api.start();
   const select = action => { if (sdk.ui.action) callbacks.uiDisappear({ action: sdk.ui.action }); sdk.ui.action = action; if (action) callbacks.uiAppear({ action }); };
@@ -101,19 +101,51 @@ test('R11: pending artwork does not hold metadata polling and stale covers are d
   client.data = { ...client.data, state: 'playing', artUrl: 'https://i.scdn.co/old' }; await api.refresh(); await flush(); assert.equal(transport.states.at(-1), 1);
   client.data = { ...client.data, state: 'paused', title: 'New', artUrl: 'https://i.scdn.co/new' }; await api.refresh(); await flush(); assert.equal(transport.states.at(-1), 0); assert.equal(client.reads, 2);
   old.resolve('old-cover'); await flush(); assert.ok(!cover.images.includes('old-cover'));
-  current.resolve('new-cover'); await flush(); assert.equal(cover.images.at(-1), 'new-cover');
+  current.resolve('new-cover'); await flush(); assert.equal(cover.images.at(-1), 'control:paused|new-cover');
 });
 
 test('artwork checkbox and new profiles use the current cover without native title wrapping', async () => {
   const { api, client } = await runtime({ artwork: { async get() { return 'cover'; } } }); client.data = { ...client.data, title: 'Perfect', artists: 'Kaley, LYON', artUrl: 'https://i.scdn.co/cover' };
   const action = key(); const entry = { action, settings: {} }; api.visible.set(action.id, entry); await api.refresh(); await flush();
   assert.equal(action.images.at(-1), 'caption:Perfect|Kaley, LYON|cover'); assert.equal(action.titles.at(-1), '');
-  entry.settings.showText = false; await api.refresh(); assert.equal(action.images.at(-1), 'cover');
+  entry.settings.showText = false; await api.refresh(); assert.equal(action.images.at(-1), 'control:paused|cover');
 });
 
 test('a delayed render is discarded when its action disappears', async () => {
   const delayed = deferred(); const { api, callbacks } = await runtime({ artworkRenderer: { render: () => delayed.promise } }); const action = key(); api.visible.set(action.id, { action, settings: {} });
   const pending = api.refresh(); await flush(); callbacks.onWillDisappear({ action }); delayed.resolve('old-image'); await pending; assert.equal(action.images.length, 0);
+});
+
+test('Favorite follows the saved track state and never confirms a failed change', async () => {
+  const { api, client, callbacks } = await runtime();
+  const action = key('like'); api.visible.set(action.id, { action, settings: {} });
+  client.data.saved = 'no'; await api.refresh(); assert.equal(action.states.at(-1), 0);
+  callbacks.onKeyDown({ action, payload: { settings: {} } }); await flush();
+  assert.deepEqual(client.calls, [['like']]);
+  assert.equal(action.states.at(-1), 0, 'An unconfirmed command must not fill the heart');
+  client.data.saved = 'yes'; await api.refresh(); assert.equal(action.states.at(-1), 1);
+  client.runError = new Error('refused'); await api.perform({ action }, ['like']);
+  assert.equal(action.alerts, 1); assert.equal(action.states.at(-1), 1);
+  client.runError = undefined; client.data.saved = 'no'; client.data.title = 'Next track';
+  await api.refresh(); assert.equal(action.states.at(-1), 0);
+});
+
+test('artwork remains an identifiable play/pause control when all optional overlays are hidden', async () => {
+  const { api, client, callbacks, intervals } = await runtime({ artwork: { async get() { return 'cover'; } } });
+  const action = key();
+  const settings = { showText: false, scrollText: false, showRemaining: false };
+  api.visible.set(action.id, { action, settings });
+  client.data = { ...client.data, state: 'paused', title: 'Track', artUrl: 'https://i.scdn.co/cover' };
+  await api.refresh(); await flush();
+  assert.equal(action.images.at(-1), 'control:paused|cover');
+  assert.ok(![...intervals.values()].some(timer => timer.period === 100));
+  callbacks.onKeyDown({ action, payload: { settings } }); await flush();
+  assert.deepEqual(client.calls, [['play-pause']]);
+  client.data.state = 'playing'; await api.refresh();
+  assert.equal(action.images.at(-1), 'control:playing|cover');
+  client.snapshotError = new Error('offline'); await api.refresh();
+  assert.equal(action.images.at(-1), 'imgs/music.png');
+  assert.equal(action.titles.at(-1), 'Ouvrir\nSpotifast');
 });
 
 test('animation advances captions and countdown without extra CLI reads, and resets for a new track', async () => {
@@ -125,7 +157,7 @@ test('animation advances captions and countdown without extra CLI reads, and res
   const reads = client.reads;
   assert.equal(frames.at(-1).elapsedMs, 0);
   assert.equal(frames.at(-1).remainingMs, 110000);
-  assert.ok([...intervals.values()].some(timer => timer.period === 200));
+  assert.ok([...intervals.values()].some(timer => timer.period === 100));
   const titles = action.titles.length;
   clock += 3200; await api.animate();
   assert.equal(frames.at(-1).elapsedMs, 3200);
@@ -135,7 +167,7 @@ test('animation advances captions and countdown without extra CLI reads, and res
   client.data = { ...client.data, title: 'New title', position: 0 }; await api.refresh();
   assert.equal(frames.at(-1).elapsedMs, 0);
   assert.equal(frames.at(-1).remainingMs, 120000);
-  callbacks.onWillDisappear({ action }); assert.ok(![...intervals.values()].some(timer => timer.period === 200));
+  callbacks.onWillDisappear({ action }); assert.ok(![...intervals.values()].some(timer => timer.period === 100));
   api.stop(); assert.equal(intervals.size, 0);
 });
 
@@ -149,7 +181,7 @@ test('paused countdown is stable; timer, text and animation can be disabled inde
   assert.equal(frames.at(-1).remainingMs, 110000); assert.equal(frames.at(-1).showText, false);
   callbacks.settings({ action, payload: { settings: { showText: true, scrollText: false, showRemaining: false } } }); await api.refresh();
   assert.equal(frames.at(-1).scrollText, false); assert.equal(frames.at(-1).remainingMs, undefined);
-  assert.ok(![...intervals.values()].some(timer => timer.period === 200));
+  assert.ok(![...intervals.values()].some(timer => timer.period === 100));
   client.snapshotError = new Error('offline'); await api.refresh(); const count = frames.length; await api.animate(); assert.equal(frames.length, count);
   api.stop();
 });

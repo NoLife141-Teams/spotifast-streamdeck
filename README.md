@@ -26,7 +26,11 @@ Les multi-actions peuvent définir explicitement Lecture/Pause, Aléatoire activ
 
 ### État de la version
 
-La version 0.2.3 en préparation ajoute le défilement des titres et noms d’artistes trop longs sur **Morceau et pochette**, ainsi qu’un compteur du temps restant en haut de la touche. Les textes courts restent immobiles. Le compteur se fige en pause et disparaît si la durée est inconnue. Les options **Faire défiler les titres et noms d’artistes longs** et **Afficher le temps restant du morceau** sont activées par défaut et peuvent être désactivées séparément; le compteur peut aussi s’afficher sans les légendes.
+La version 0.2.3 en préparation ajoute le défilement des titres et noms d’artistes trop longs sur **Lecture / Pause avec pochette**, ainsi qu’un compteur du temps restant en haut de la touche. Le texte revient progressivement au début, avec un ralentissement aux extrémités et jusqu’à dix images par seconde. Les textes courts restent immobiles. Le compteur se fige en pause et disparaît si la durée est inconnue. Les options **Faire défiler les titres et noms d’artistes longs** et **Afficher le temps restant du morceau** sont activées par défaut et peuvent être désactivées séparément; le compteur peut aussi s’afficher sans les légendes.
+
+**Lecture / Pause (icône)** et **Lecture / Pause avec pochette** contrôlent toutes deux la lecture. La seconde affiche la pochette et un petit symbole qui indique l’action de la touche : ▶ pour reprendre, ⏸ pour mettre en pause. Ce symbole reste visible si les légendes et le compteur sont masqués.
+
+**Favori** affiche un cœur plein quand le morceau est ajouté, et un cœur vide sinon. Les deux états gardent un fond noir.
 
 Version 0.2.2 corrige les constats R01 à R13 : états des boutons synchronisés, multi-actions explicites, conservation des réglages, file de commandes limitée, erreurs localisées, légendes Unicode ajustées et pochettes téléchargées sans bloquer les mises à jour. Les identifiants des actions sont conservés. L’ouverture d’une playlist depuis un lien Spotify a été testée par l’utilisateur. Les tests couvrent Node 20 et 22, les deux langues et le SDK Elgato; la validation du paquet Elgato réussit. Les molettes nécessitent un Stream Deck +; leur fonctionnement physique reste à vérifier sur ce modèle.
 
@@ -52,7 +56,11 @@ Multi Actions can explicitly set Play/Pause, Shuffle on/off, and Repeat off/cont
 
 ### Version status
 
-The upcoming 0.2.3 version adds scrolling for long titles and artist names on **Track and artwork**, plus a remaining-time counter at the top of the key. Short text stays stationary. The counter freezes when paused and hides when duration is unknown. **Scroll long titles and artist names** and **Show the remaining track time** default to enabled and can be disabled separately; the timer can also appear without captions.
+The upcoming 0.2.3 version adds scrolling for long titles and artist names on **Play / Pause with artwork**, plus a remaining-time counter at the top of the key. Text returns gradually to the beginning, easing at both ends with up to ten frames per second. Short text stays stationary. The counter freezes when paused and hides when duration is unknown. **Scroll long titles and artist names** and **Show the remaining track time** default to enabled and can be disabled separately; the timer can also appear without captions.
+
+**Play / Pause (icon)** and **Play / Pause with artwork** both control playback. The latter shows the cover and a small symbol for the available action: ▶ to resume, ⏸ to pause. This symbol remains visible when captions and the countdown are hidden.
+
+**Favorite** shows a filled heart when the track is saved and an outlined heart otherwise. Both states use a black background.
 
 Version 0.2.2 addresses review findings R01–R13: synchronized button states, explicit Multi Actions, preserved settings, bounded command queue, localized errors, fitted Unicode captions and background artwork downloads. Existing action identifiers are preserved. A user has successfully tested opening a playlist from a Spotify link. Tests cover Node 20 and 22, both languages and the Elgato SDK; Elgato package validation passes. Dial controls require a Stream Deck + and still need a hardware test on that model.
 

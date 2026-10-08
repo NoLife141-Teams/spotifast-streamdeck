@@ -36,13 +36,18 @@ export function fitCaption(value, font, { maxSize = 10, minSize = 8.5, maxWidth 
   const text = chars.join('').trimEnd() + '…';
   return { text, size, width: widthOf(text, size, font) };
 }
-// Hold the beginning and end so both are readable; move only overflowing lines.
+// Hold both ends, then ease back along the same line without a wraparound jump.
 export function scrollOffset(width, elapsedMs = 0) {
-  const distance = Math.max(0, width - TEXT_WIDTH);
+  const distance = Number.isFinite(width) ? Math.max(0, width - TEXT_WIDTH) : 0;
   if (!distance) return 0;
-  const hold = 1800, travel = distance / 12 * 1000;
-  const phase = Math.max(0, Number.isFinite(elapsedMs) ? elapsedMs : 0) % (hold * 2 + travel);
-  return Math.min(distance, Math.floor(Math.max(0, phase - hold) / 1000 * 12 * 2) / 2);
+  const hold = 1800, travel = Math.max(1200, distance / 12 * 1000);
+  const phase = Math.max(0, Number.isFinite(elapsedMs) ? elapsedMs : 0) % (2 * (hold + travel));
+  const ease = progress => (1 - Math.cos(Math.PI * progress)) / 2;
+  let progress = 0;
+  if (phase > hold && phase < hold + travel) progress = ease((phase - hold) / travel);
+  else if (phase >= hold + travel && phase <= 2 * hold + travel) progress = 1;
+  else if (phase > 2 * hold + travel) progress = 1 - ease((phase - 2 * hold - travel) / travel);
+  return Math.round(distance * progress * 100) / 100;
 }
 export function formatRemaining(milliseconds) {
   if (!Number.isFinite(milliseconds) || milliseconds < 0) return '';
@@ -78,12 +83,14 @@ function drawLine(line, baseline, fill, offset = 0, center = SIZE / 2) {
     '<text x="0" y="0" font-family="Arial,sans-serif" font-size="' + line.size + '" textLength="' + line.width + '" lengthAdjust="spacingAndGlyphs" fill="' + fill + '">' + xml(line.text) + '</text>';
   return '<g transform="translate(' + x + ' ' + baseline + ')">' + glyphs + '</g>';
 }
-function renderCaption(cover, layout, fonts, { elapsedMs = 0, remainingMs } = {}) {
+function renderCaption(cover, layout, fonts, { elapsedMs = 0, remainingMs, playbackState } = {}) {
+  const playback = ['playing', 'paused', 'stopped'].includes(playbackState);
+  const timerWidth = playback ? 38 : TEXT_WIDTH;
   const remaining = formatRemaining(remainingMs);
-  let time = prepareLine(remaining, fonts.regular, { maxSize: 9, minSize: 8.5 });
+  let time = prepareLine(remaining, fonts.regular, { maxSize: 9, minSize: 8.5, maxWidth: timerWidth });
   // Keep every digit even if system fonts are unavailable or the track lasts hours.
   if (time.text !== remaining) {
-    const width = Math.min(TEXT_WIDTH, remaining.length * 5.5);
+    const width = Math.min(timerWidth, remaining.length * 5.5);
     time = { text: remaining, size: 8.5, width, inkWidth: width, left: 0 };
   }
   const badgeWidth = Math.max(30, time.width + 8);
@@ -93,6 +100,8 @@ function renderCaption(cover, layout, fonts, { elapsedMs = 0, remainingMs } = {}
     '<title>' + xml(layout.title) + '</title><desc>' + xml(layout.artists) + '</desc>' +
     '<defs><clipPath id="caption"><rect x="6" y="44" width="60" height="26"/></clipPath><clipPath id="track"><rect x="6" y="44" width="60" height="13"/></clipPath><clipPath id="artist"><rect x="6" y="57" width="60" height="13"/></clipPath></defs>' +
     '<rect width="72" height="72" fill="#202020"/>' + image +
+    (playback ? '<g id="playback-control"><rect x="4" y="4" width="16" height="14" rx="3" fill="#000" fill-opacity=".84"/>' +
+      (playbackState === 'playing' ? '<path id="playback-pause" d="M9 7h2v8H9z M13 7h2v8h-2z" fill="#fff"/>' : '<path id="playback-play" d="M10 7l6 4-6 4z" fill="#fff"/>') + '</g>' : '') +
     (remaining ? '<rect x="' + (68 - badgeWidth) + '" y="4" width="' + badgeWidth + '" height="14" rx="3" fill="#000" fill-opacity=".84"/>' + drawLine(time, 14, '#fff', 0, 68 - badgeWidth / 2) : '') +
     (layout.showText ? '<rect y="42" width="72" height="30" fill="#000" fill-opacity=".84"/>' +
     '<g clip-path="url(#caption)"><g clip-path="url(#track)">' + drawLine(layout.track, 55, '#fff', scrollOffset(layout.track.width, elapsedMs)) +
@@ -123,7 +132,7 @@ export class ArtworkRenderer {
       this.layouts.set(layoutKey, layout);
       while (this.layouts.size > 8) this.layouts.delete(this.layouts.keys().next().value);
     }
-    const key = JSON.stringify([cover, layoutKey, layout.showText ? scrollOffset(layout.track.width, options.elapsedMs) : 0, layout.showText ? scrollOffset(layout.artist.width, options.elapsedMs) : 0, formatRemaining(options.remainingMs)]);
+    const key = JSON.stringify([cover, layoutKey, layout.showText ? scrollOffset(layout.track.width, options.elapsedMs) : 0, layout.showText ? scrollOffset(layout.artist.width, options.elapsedMs) : 0, formatRemaining(options.remainingMs), options.playbackState]);
     if (this.cache.has(key)) return this.cache.get(key);
     const svg = renderCaption(cover, layout, fonts, options);
     const image = 'data:image/svg+xml;base64,' + Buffer.from(svg).toString('base64');

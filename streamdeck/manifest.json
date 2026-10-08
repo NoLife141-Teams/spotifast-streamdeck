@@ -25,9 +25,9 @@
   "Actions": [
     {
       "UUID": "rocks.spotifast.streamdeck.playpause",
-      "Name": "Play / Pause",
+      "Name": "Play / Pause (icon)",
       "Icon": "imgs/play",
-      "Tooltip": "Spotifast: Play / Pause",
+      "Tooltip": "Spotifast: Play / Pause (icon)",
       "PropertyInspectorPath": "ui/settings.html",
       "Controllers": [
         "Keypad"
@@ -83,9 +83,9 @@
     {
       "UUID": "rocks.spotifast.streamdeck.nowplaying",
       "DisableCaching": true,
-      "Name": "Track and artwork",
+      "Name": "Play / Pause with artwork",
       "Icon": "imgs/music",
-      "Tooltip": "Spotifast: Track and artwork",
+      "Tooltip": "Spotifast: Play / Pause with artwork",
       "PropertyInspectorPath": "ui/settings.html",
       "Controllers": [
         "Keypad"

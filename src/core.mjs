@@ -9,10 +9,10 @@ class LocalizedError extends Error {
 }
 var UUID = "rocks.spotifast.streamdeck";
 var actions = [
-  ["playpause","Play / Pause","play"],
+  ["playpause","Play / Pause (icon)","play"],
   ["next","Next","next"],
   ["previous","Previous","previous"],
-  ["nowplaying","Track and artwork","music"],
+  ["nowplaying","Play / Pause with artwork","music"],
   ["volumeup","Volume +","volumeup"],
   ["volumedown","Volume −","volumedown"],
   ["mute","Mute","mute"],

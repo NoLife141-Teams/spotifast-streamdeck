@@ -65,9 +65,9 @@ export function createRuntime(streamDeck, {
         const captionKey = JSON.stringify([snapshot.title, snapshot.artists, snapshot.album, snapshot.duration, snapshot.artUrl, settings.showText, settings.scrollText]);
         if (entry.captionKey !== captionKey) { entry.captionKey = captionKey; entry.captionStartedAt = clock; }
         const remainingMs = settings.showRemaining !== false ? remainingTime(snapshot, clock - sampledAt) : undefined;
-        if (settings.showText !== false || remainingMs !== undefined) picture = await artworkRenderer.render(entry.artImage, snapshot.title || t('noTrack'), snapshot.title ? snapshot.artists : '', {
+        picture = await artworkRenderer.render(entry.artImage, snapshot.title || t('noTrack'), snapshot.title ? snapshot.artists : '', {
           showText: settings.showText !== false, scrollText: settings.scrollText !== false,
-          elapsedMs: Math.max(0, clock - entry.captionStartedAt), remainingMs
+          elapsedMs: Math.max(0, clock - entry.captionStartedAt), remainingMs, playbackState: snapshot.state
         });
       }
       if (['volumeup', 'volumedown', 'mute'].includes(id)) title = snapshot.volume === null ? '' : snapshot.volume + '%';
@@ -98,7 +98,7 @@ export function createRuntime(streamDeck, {
   }
   function updateAnimationTimer() {
     const enabled = started && online && [...visible.values()].some(animatedEntry);
-    if (enabled && animationInterval === undefined) animationInterval = timers.setInterval(() => animate().catch(report), 200);
+    if (enabled && animationInterval === undefined) animationInterval = timers.setInterval(() => animate().catch(report), 100);
     if (!enabled && animationInterval !== undefined) { timers.clearInterval(animationInterval); animationInterval = undefined; }
   }
   function requestArtwork() {

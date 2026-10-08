@@ -36,8 +36,50 @@ test('scrolling keeps full Unicode text, holds both ends and leaves short lines 
   assert.equal(scrollOffset(120, 1800), 0);
   assert.equal(scrollOffset(120, 6800), 60);
   assert.equal(scrollOffset(120, 8000), 60);
-  assert.equal(scrollOffset(120, 8600), 0);
+  assert.equal(scrollOffset(120, 8600), 60);
+  assert.equal(scrollOffset(120, 11100), 30);
+  assert.equal(scrollOffset(120, 13600), 0);
   assert.equal(scrollOffset(120, NaN), 0);
+});
+
+test('the return and loop seam stay continuous, with gentle starts and no large frame jumps', () => {
+  for (const width of [61, 68, 120, 600]) {
+    const distance = width - 60, travel = Math.max(1200, distance / 12 * 1000);
+    const returnStart = 3600 + travel, cycle = 3600 + 2 * travel;
+    let previous = scrollOffset(width, 0);
+    for (let elapsed = 100; elapsed <= cycle + 100; elapsed += 100) {
+      const current = scrollOffset(width, elapsed);
+      assert.ok(current >= 0 && current <= distance);
+      assert.ok(Math.abs(current - previous) <= 1.9, `A visible jump occurred at ${elapsed} ms for width ${width}`);
+      previous = current;
+    }
+    assert.equal(scrollOffset(width, returnStart), distance);
+    assert.ok(scrollOffset(width, returnStart + travel / 2) > 0);
+    assert.ok(scrollOffset(width, returnStart + travel / 2) < distance);
+    assert.equal(scrollOffset(width, cycle), 0);
+    assert.ok(scrollOffset(width, 1900) < 0.2);
+    assert.ok(distance - scrollOffset(width, returnStart + 100) < 0.2);
+  }
+});
+
+test('artwork shows the available playback action even with captions and timer hidden', async () => {
+  const iconRenderer = new ArtworkRenderer({ fallbackPath: new URL('../streamdeck/imgs/music.png', import.meta.url) });
+  const options = { showText: false, playbackState: 'paused' };
+  const play = await iconRenderer.render('', 'Track', 'Artist', options);
+  const pause = await iconRenderer.render('', 'Track', 'Artist', { ...options, playbackState: 'playing' });
+  const decode = image => Buffer.from(image.split(',')[1], 'base64').toString();
+  assert.ok(decode(play).includes('id="playback-play"'));
+  assert.ok(!decode(play).includes('id="playback-pause"'));
+  assert.ok(decode(pause).includes('id="playback-pause"'));
+  assert.ok(!decode(pause).includes('id="playback-play"'));
+  assert.ok(!decode(pause).includes('<g clip-path="url(#caption)">'));
+  assert.notEqual(play, pause, 'The image cache must distinguish playback states');
+  assert.equal(play, await iconRenderer.render('', 'Track', 'Artist', options));
+  assert.ok(decode(await iconRenderer.render('', 'Track', 'Artist', { ...options, playbackState: 'stopped' })).includes('id="playback-play"'));
+  const timed = captionSvg('', 'Track', 'Artist', {}, { ...options, remainingMs: 123456789 });
+  assert.ok(timed.includes('-34:17:37'), 'Every digit should remain visible beside the playback control');
+  const timer = timed.match(/<rect x="([0-9.]+)" y="4" width="([0-9.]+)" height="14"/g).at(-1);
+  assert.ok(Number(timer.match(/x="([0-9.]+)"/)[1]) >= 22, 'The timer must not overlap the playback control');
 });
 
 test('remaining time uses milliseconds, pauses with playback and hides unknown durations', () => {

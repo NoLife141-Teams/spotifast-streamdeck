@@ -34,7 +34,7 @@ function renderLanguage() {
   document.querySelectorAll('[data-i18n-placeholder]').forEach(node => { node.placeholder = translate(node.dataset.i18nPlaceholder); });
   element('language').value = ['en', 'fr'].includes(globalSettings.language) ? globalSettings.language : 'auto';
   const id = actionId?.split('.').pop();
-  element('help').textContent = translate(id === 'volume' ? 'dialHelp' : id === 'nowplaying' ? 'artworkHelp' : 'help');
+  element('help').textContent = translate(id === 'volume' ? 'dialHelp' : id === 'nowplaying' ? 'artworkHelp' : id === 'like' ? 'favoriteHelp' : 'help');
   renderStatus();
 }
 function normalizeStep(value) {

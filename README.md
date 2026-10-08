@@ -22,7 +22,7 @@ La fenêtre de réglages suit la langue de Stream Deck. Le choix **Langue → En
 
 La détection automatique couvre l’installation Windows standard. Un emplacement personnalisé de `spotifast.exe` peut être indiqué dans les réglages.
 
-Les multi-actions peuvent définir explicitement Lecture/Pause, Aléatoire activé/désactivé et Répétition désactivée/contexte. Favori reste disponible comme touche, mais est exclu des multi-actions. Les commandes en attente sont limitées et les rotations proches dans le même sens sont regroupées.
+Les multi-actions peuvent définir explicitement Lecture/Pause avec la touche icône ou la touche avec pochette, Aléatoire activé/désactivé et Répétition désactivée/contexte. Relancer une multi-action Lecture ou Pause conserve l’état demandé. Sur une touche normale, les deux actions Lecture/Pause basculent toujours la lecture. Favori reste disponible comme touche, mais est exclu des multi-actions. Les commandes en attente sont limitées et les rotations proches dans le même sens sont regroupées.
 
 ### État de la version
 
@@ -56,7 +56,7 @@ Settings follow the Stream Deck language. **Language → English / Français** c
 
 Automatic detection supports the standard Windows installation. You can set a custom `spotifast.exe` location in the settings.
 
-Multi Actions can explicitly set Play/Pause, Shuffle on/off, and Repeat off/context. Favorite remains available as a key but is excluded from Multi Actions. Pending commands are bounded and nearby rotations in the same direction are combined.
+Multi Actions can explicitly set Play/Pause with either the icon key or the artwork key, Shuffle on/off, and Repeat off/context. Repeating a Play or Pause Multi Action keeps the requested state. On a regular key, both Play/Pause actions still toggle playback. Favorite remains available as a key but is excluded from Multi Actions. Pending commands are bounded and nearby rotations in the same direction are combined.
 
 ### Version status
 

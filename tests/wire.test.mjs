@@ -42,12 +42,24 @@ test('real Elgato SDK routes macro states and inspector failures to their origin
     });
     await waitFor(message => message.ready);
     assert.equal((await waitFor(message => message.event === 'registerPlugin')).uuid, 'rocks.spotifast.streamdeck');
-    const action = 'rocks.spotifast.streamdeck.playpause';
+    let action = 'rocks.spotifast.streamdeck.playpause';
     const send = (event, context, payload = {}) => socket.send(JSON.stringify({ event, context, action, device: 'test-device', payload }));
     send('willAppear', 'key-a', { controller: 'Keypad', coordinates: { column: 0, row: 0 }, settings: {}, isInMultiAction: false });
     assert.equal((await waitFor(message => message.event === 'setState' && message.context === 'key-a')).payload.state, 0);
     send('keyDown', 'key-a', { settings: {}, isInMultiAction: true, userDesiredState: 1 });
     assert.deepEqual((await waitFor(message => message.command)).command, ['play']);
+    action = 'rocks.spotifast.streamdeck.nowplaying';
+    send('willAppear', 'artwork', { controller: 'Keypad', coordinates: { column: 1, row: 0 }, settings: {}, isInMultiAction: false });
+    assert.equal((await waitFor(message => message.event === 'setState' && message.context === 'artwork')).payload.state, 0);
+    for (const desired of [1, 1, 0, 0]) {
+      const since = messages.length;
+      send('keyDown', 'artwork', { settings: {}, isInMultiAction: true, userDesiredState: desired });
+      assert.deepEqual((await waitFor(message => messages.indexOf(message) >= since && message.command)).command, [desired ? 'play' : 'pause']);
+    }
+    const since = messages.length;
+    send('keyDown', 'artwork', { settings: {}, isInMultiAction: false });
+    assert.deepEqual((await waitFor(message => messages.indexOf(message) >= since && message.command)).command, ['play-pause']);
+    action = 'rocks.spotifast.streamdeck.playpause';
     send('propertyInspectorDidAppear', 'key-a');
     send('sendToPlugin', 'key-a', { type: 'open', requestId: 'sdk-open' });
     const failure = await waitFor(message => message.event === 'sendToPropertyInspector' && message.payload.requestId === 'sdk-open');

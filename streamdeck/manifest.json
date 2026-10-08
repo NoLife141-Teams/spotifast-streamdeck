@@ -83,6 +83,7 @@
     {
       "UUID": "rocks.spotifast.streamdeck.nowplaying",
       "DisableCaching": true,
+      "DisableAutomaticStates": true,
       "Name": "Play / Pause with artwork",
       "Icon": "imgs/music",
       "Tooltip": "Spotifast: Play / Pause with artwork",
@@ -92,7 +93,12 @@
       ],
       "States": [
         {
-          "Image": "imgs/music",
+          "Image": "imgs/play",
+          "TitleAlignment": "bottom",
+          "FontSize": 11
+        },
+        {
+          "Image": "imgs/pause-active",
           "TitleAlignment": "bottom",
           "FontSize": 11
         }

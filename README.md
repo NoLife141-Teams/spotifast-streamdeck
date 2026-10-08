@@ -82,7 +82,26 @@ Version 0.2.2 addresses review findings R01–R13: synchronized button states, e
 
 ## Development / Développement
 
-Node.js 20.5.1 or newer is required.
+Node.js 20.9.0 or newer is required. Build the installable plugin on Windows x64;
+the installer includes sharp and its Windows x64 native image libraries.
+
+Downloaded JPEG, PNG and WebP artwork is decoded and reduced once to 144 × 144,
+with the same central crop as the artwork key, preserved proportions and alpha
+for transparent formats. A successful result is cached for one hour; failed
+downloads or invalid images are retried after 30 seconds. The cache holds at
+most eight entries and 1 MiB of encoded image data. Downloads remain limited to
+2 MiB and four seconds; decoding rejects images above 8192 pixels per side or
+16 megapixels and processing has a two-second timeout.
+
+Les pochettes JPEG, PNG et WebP sont réduites une seule fois à 144 × 144 après
+leur téléchargement, avec le même recadrage central que la touche, sans
+déformation et en conservant la transparence des formats compatibles. Le cache
+est limité à huit entrées et 1 Mio de données encodées : une heure pour une
+pochette valide, 30 secondes pour un échec. Les téléchargements restent limités
+à 2 Mio et quatre secondes ; le décodage refuse les images de plus de 8192
+pixels par côté ou 16 mégapixels, avec deux secondes au maximum pour le
+traitement. La compilation du paquet nécessite Windows x64 et Node.js 20.9.0
+ou plus récent. Les bibliothèques natives et leurs licences sont incluses.
 
 ```sh
 npm ci

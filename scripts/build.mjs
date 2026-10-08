@@ -41,11 +41,14 @@ for (const language of ['en', 'fr']) {
 }
 await writeFile(path.join(output, 'package.json'), '{ "type": "commonjs" }\n');
 await writeFile(path.join(output, '.sdignore'), 'logs/\n*.log\n*.map\n');
-const runtimePackages = ['@elgato/streamdeck', '@elgato/schemas', '@elgato/utils', 'ws', 'zod', 'opentype.js'];
+if (process.platform !== 'win32' || process.arch !== 'x64') throw new Error('The installable plugin must be built on Windows x64');
+const imagePackages = ['sharp', '@img/colour', 'detect-libc', 'semver', '@img/sharp-win32-x64'];
+const runtimePackages = ['@elgato/streamdeck', '@elgato/schemas', '@elgato/utils', 'ws', 'zod', 'opentype.js', ...imagePackages];
 const requireFromRoot = createRequire(import.meta.url);
 const requireFromSdk = createRequire(requireFromRoot.resolve('@elgato/streamdeck'));
 async function packageDirectory(dependency) {
-  let directory = path.dirname((dependency === 'opentype.js' || dependency === '@elgato/streamdeck' ? requireFromRoot : requireFromSdk).resolve(dependency));
+  const resolver = imagePackages.includes(dependency) || dependency === 'opentype.js' || dependency === '@elgato/streamdeck' ? requireFromRoot : requireFromSdk;
+  let directory = path.dirname(resolver.resolve(dependency === '@img/sharp-win32-x64' ? dependency + '/package' : dependency));
   while (directory !== path.dirname(directory)) {
     try { const metadata = JSON.parse(await readFile(path.join(directory, 'package.json'), 'utf8')); if (metadata.name === dependency) return directory; }
     catch (error) { if (error.code !== 'ENOENT') throw error; }
@@ -57,9 +60,13 @@ let notices = 'Third-party licenses bundled with Spotifast Stream Deck\n\n';
 for (const dependency of runtimePackages) {
   const directory = await packageDirectory(dependency);
   const metadata = JSON.parse(await readFile(path.join(directory, 'package.json'), 'utf8'));
-  const license = await readFile(path.join(directory, 'LICENSE'), 'utf8');
+  const license = await readFile(path.join(directory, dependency === '@img/colour' ? 'LICENSE.md' : 'LICENSE'), 'utf8');
   notices += dependency + ' ' + metadata.version + '\n' + license + '\n\n';
+  if (imagePackages.includes(dependency)) await cp(directory, path.join(output, 'node_modules', dependency), { recursive: true });
 }
+await cp(path.join(root, 'third-party'), path.join(output, 'third-party'), { recursive: true });
+notices += await readFile(path.join(root, 'third-party/SHARP-LIBVIPS-NOTICES.md'), 'utf8');
+notices += '\nGNU LGPLv3 and GPLv3 texts and native source links are included in third-party/.\n';
 await writeFile(path.join(output, 'THIRD_PARTY_NOTICES.txt'), notices);
-await build({ entryPoints: [path.join(root, 'src/plugin.mjs')], outfile: path.join(output, 'bin/plugin.js'), bundle: true, platform: 'node', format: 'cjs', target: 'node20', legalComments: 'eof' });
+await build({ entryPoints: [path.join(root, 'src/plugin.mjs')], outfile: path.join(output, 'bin/plugin.js'), bundle: true, external: ['sharp'], platform: 'node', format: 'cjs', target: 'node20', legalComments: 'eof' });
 console.log('Built ' + path.relative(root, output) + ' (English + French)');

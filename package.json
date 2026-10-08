@@ -5,7 +5,7 @@
   "description": "English and French Stream Deck controls for Spotifast on Windows",
   "author": "NoLife141-Teams",
   "engines": {
-    "node": ">=20.5.1"
+    "node": ">=20.9.0"
   },
   "scripts": {
     "build": "node scripts/build.mjs",
@@ -16,7 +16,8 @@
   },
   "dependencies": {
     "@elgato/streamdeck": "3.0.1",
-    "opentype.js": "2.0.0"
+    "opentype.js": "2.0.0",
+    "sharp": "0.35.5"
   },
   "devDependencies": {
     "@elgato/cli": "1.10.1",

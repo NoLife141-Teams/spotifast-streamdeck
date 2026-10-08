@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import { ArtworkRenderer, fitCaption, captionSvg, scrollOffset, formatRemaining } from '../src/artwork.mjs';
-import { remainingTime, parseNowPlaying } from '../src/core.mjs';
+import { remainingTime, parseNowPlaying, ArtworkCache } from '../src/core.mjs';
 
 const renderer = new ArtworkRenderer({ fallbackPath: new URL('../streamdeck/imgs/music.png', import.meta.url) });
 test('title and artist use real font widths and stay inside 60 pixels', async () => {
@@ -194,4 +194,65 @@ test('scroll detection reuses the rendering layout and works without system font
   await fallback.render('', 'Hi', '', options);
   assert.equal(fallback.layouts.size, 1); assert.equal(fallback.layouts.values().next().value, layout);
   assert.equal(await fallback.hasScrollingText('👨‍👩‍👧‍👦'.repeat(20), '', options), true);
+});
+
+test('compact image keys preserve exact SVG output through cover and counter eviction', async () => {
+  for (const fonts of [await renderer.fonts, {}]) {
+    const cached = new ArtworkRenderer({ loadFonts: async () => fonts });
+    for (let i = 0; i < 100; i++) {
+      const cover = 'data:image/jpeg;base64,' + Buffer.from('cover-' + (i % 12)).toString('base64');
+      const title = i % 2 ? 'A long scrolling track title 🎵' : 'Short';
+      const options = {
+        showText: i % 3 !== 0, scrollText: i % 2 === 0, captionLayout: i % 4 ? 'compact' : 'twoLines',
+        elapsedMs: i * 200, remainingMs: i * 1000, playbackFeedback: i % 3 ? 'playing' : 'paused', feedbackOpacity: (i % 10) / 10
+      };
+      const image = await cached.render(cover, title, 'Artist', options);
+      assert.equal(Buffer.from(image.split(',')[1], 'base64').toString(), captionSvg(cover, title, 'Artist', fonts, options));
+    }
+    assert.ok(cached.cache.size <= 8); assert.ok(cached.covers.size <= 8); assert.ok(cached.counters.size <= 64);
+    assert.ok([...cached.cache.keys()].every(key => !key.includes('data:image/')));
+  }
+});
+
+test('scrolling frames reuse counter outlines until the displayed second changes', async () => {
+  const original = await renderer.fonts;
+  let paths = 0;
+  const bold = Object.create(original.bold);
+  bold.getPath = (...args) => { paths++; return original.bold.getPath(...args); };
+  const cached = new ArtworkRenderer({ loadFonts: async () => ({ ...original, bold }) });
+  const cover = 'data:image/png;base64,AAAA';
+  const options = { captionLayout: 'compact', scrollText: true, remainingMs: 123000 };
+  const title = 'A long scrolling track title';
+  await cached.layoutFor(title, 'Artist', options); paths = 0;
+  await cached.render(cover, title, 'Artist', { ...options, elapsedMs: 2000 });
+  assert.ok(paths > 0); paths = 0;
+  for (let elapsedMs = 2100; elapsedMs <= 2900; elapsedMs += 100) await cached.render(cover, title, 'Artist', { ...options, elapsedMs });
+  assert.equal(paths, 0, 'The unchanged timer must reuse its glyph geometry across distinct scrolling frames');
+  await cached.render(cover, title, 'Artist', { ...options, remainingMs: 122000, elapsedMs: 3000 });
+  assert.ok(paths > 0, 'The next displayed second needs its own geometry');
+});
+
+test('render cache keys stay compact with large covers and distinguish replacement bytes', async () => {
+  const cached = new ArtworkRenderer({ loadFonts: async () => ({}) });
+  const cover = 'data:image/jpeg;base64,' + 'A'.repeat(100000);
+  const options = { scrollText: true, captionLayout: 'compact' };
+  const first = await cached.render(cover, 'A long scrolling track title', 'Artist', options);
+  for (let i = 0; i < 10; i++) await cached.render(cover, 'A long scrolling track title', 'Artist', { ...options, elapsedMs: 2000 + i * 100 });
+  assert.ok([...cached.cache.keys()].every(key => key.length < 512));
+  const replacement = await cached.render(cover.slice(0, -4) + 'BBBB', 'A long scrolling track title', 'Artist', options);
+  assert.notEqual(first, replacement);
+  assert.equal(first, await cached.render(cover, 'A long scrolling track title', 'Artist', options));
+});
+
+test('artwork freshness follows replacement, eviction, negative entries and the original cache deadline', () => {
+  const cache = new ArtworkCache(() => { throw new Error('Freshness must never fetch'); });
+  const url = 'https://i.scdn.co/cover';
+  assert.equal(cache.isFresh(url, 'cover'), false);
+  cache.cache.set(url, { value: 'cover', expires: Date.now() + 60000 });
+  assert.equal(cache.isFresh(url, 'cover'), true); assert.equal(cache.isFresh(url, 'old'), false);
+  cache.cache.set(url, { value: 'changed', expires: Date.now() + 60000 });
+  assert.equal(cache.isFresh(url, 'cover'), false); assert.equal(cache.isFresh(url, 'changed'), true);
+  cache.cache.get(url).expires = Date.now() - 1; assert.equal(cache.isFresh(url, 'changed'), false);
+  cache.cache.set(url, { value: undefined, expires: Date.now() + 30000 }); assert.equal(cache.isFresh(url, undefined), false);
+  cache.cache.delete(url); assert.equal(cache.isFresh(url, 'changed'), false);
 });

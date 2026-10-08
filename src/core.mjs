@@ -194,6 +194,11 @@ var ArtworkCache = class {
   constructor(fetcher = fetch) {
     this.fetcher = fetcher;
   }
+  isFresh(url, value) {
+    // A visible key may hold an older value after this bounded cache replaces it.
+    const cached = this.cache.get(url);
+    return !!value && cached?.value === value && cached.expires > Date.now();
+  }
   async get(url2) {
     if (!isArtworkUrl(url2)) return void 0;
     const cached2 = this.cache.get(url2);

@@ -186,6 +186,23 @@ test('paused countdown is stable; timer, text and animation can be disabled inde
   api.stop();
 });
 
+test('artwork defaults to one line and resets scrolling when its layout changes', async () => {
+  let clock = 1000;
+  const frames = [];
+  const { api, callbacks, client } = await runtime({ now: () => clock, artworkRenderer: { async render(image, title, artists, options) { frames.push(options); return JSON.stringify(options); } } });
+  const action = key(); api.visible.set(action.id, { action, settings: {} });
+  client.data = { ...client.data, title: 'Track', artists: 'Artist' };
+  await api.refresh(); assert.equal(frames.at(-1).captionLayout, 'compact');
+  clock += 5000; await api.animate(); assert.equal(frames.at(-1).elapsedMs, 5000);
+  callbacks.settings({ action, payload: { settings: { captionLayout: 'twoLines' } } });
+  await api.refresh();
+  assert.equal(frames.at(-1).captionLayout, 'twoLines'); assert.equal(frames.at(-1).elapsedMs, 0);
+  callbacks.settings({ action, payload: { settings: { captionLayout: 'invalid' } } });
+  await api.refresh(); assert.equal(frames.at(-1).captionLayout, 'compact');
+  assert.equal(client.calls.length, 0, 'Layout changes must not send playback commands');
+  api.stop();
+});
+
 test('slow animation frames are not queued and cannot overwrite a newer track', async () => {
   const waiting = deferred(); let delayed = false;
   const { api, client } = await runtime({ artworkRenderer: { render: (image, title) => delayed ? waiting.promise : Promise.resolve(title) } });

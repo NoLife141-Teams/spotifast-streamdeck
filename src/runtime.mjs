@@ -62,11 +62,12 @@ export function createRuntime(streamDeck, {
       if (id === 'nowplaying') {
         picture = entry.artImage ?? 'imgs/music.png';
         const clock = now();
-        const captionKey = JSON.stringify([snapshot.title, snapshot.artists, snapshot.album, snapshot.duration, snapshot.artUrl, settings.showText, settings.scrollText]);
+        const captionKey = JSON.stringify([snapshot.title, snapshot.artists, snapshot.album, snapshot.duration, snapshot.artUrl, settings.showText, settings.scrollText, settings.captionLayout]);
         if (entry.captionKey !== captionKey) { entry.captionKey = captionKey; entry.captionStartedAt = clock; }
         const remainingMs = settings.showRemaining !== false ? remainingTime(snapshot, clock - sampledAt) : undefined;
         picture = await artworkRenderer.render(entry.artImage, snapshot.title || t('noTrack'), snapshot.title ? snapshot.artists : '', {
           showText: settings.showText !== false, scrollText: settings.scrollText !== false,
+          captionLayout: settings.captionLayout === 'twoLines' ? 'twoLines' : 'compact',
           elapsedMs: Math.max(0, clock - entry.captionStartedAt), remainingMs, playbackState: snapshot.state
         });
       }

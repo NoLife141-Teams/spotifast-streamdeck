@@ -70,10 +70,12 @@ function prepareLine(value, font, sizes, scrollText = false) {
   return { ...line, left: 0, inkWidth: line.width };
 }
 function prepareCaption(title, artists, fonts, options) {
+  const compact = options.captionLayout === 'compact';
   return {
-    title: normalized(title), artists: normalized(artists), showText: options.showText !== false,
+    title: normalized(title), artists: normalized(artists), showText: options.showText !== false, compact,
     track: prepareLine(title, fonts.bold, { maxSize: 10, minSize: 9 }, options.scrollText),
-    artist: prepareLine(artists, fonts.regular, { maxSize: 9, minSize: 8.5 }, options.scrollText)
+    artist: prepareLine(artists, fonts.regular, { maxSize: 9, minSize: 8.5 }, options.scrollText),
+    combined: compact ? prepareLine([normalized(title), normalized(artists)].filter(Boolean).join(' • '), fonts.bold, { maxSize: 10, minSize: 9 }, options.scrollText) : undefined
   };
 }
 function drawLine(line, baseline, fill, offset = 0, center = SIZE / 2) {
@@ -96,16 +98,20 @@ function renderCaption(cover, layout, fonts, { elapsedMs = 0, remainingMs, playb
   const badgeWidth = Math.max(30, time.width + 8);
   const image = /^data:image\/(?:jpeg|png|webp);base64,[A-Za-z0-9+/=\r\n]+$/.test(cover || '') ?
     '<image x="0" y="0" width="72" height="72" preserveAspectRatio="xMidYMid slice" xlink:href="' + cover + '"/>' : '';
+  const textTop = layout.compact ? 56 : 48;
+  const caption = layout.compact ? drawLine(layout.combined, 66, '#fff', scrollOffset(layout.combined.width, elapsedMs)) :
+    '<g clip-path="url(#track)">' + drawLine(layout.track, 58, '#fff', scrollOffset(layout.track.width, elapsedMs)) +
+    '</g><g clip-path="url(#artist)">' + drawLine(layout.artist, 69, '#dedede', scrollOffset(layout.artist.width, elapsedMs)) + '</g>';
   return '<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="144" height="144" viewBox="0 0 72 72">' +
     '<title>' + xml(layout.title) + '</title><desc>' + xml(layout.artists) + '</desc>' +
-    '<defs><clipPath id="caption"><rect x="6" y="44" width="60" height="26"/></clipPath><clipPath id="track"><rect x="6" y="44" width="60" height="13"/></clipPath><clipPath id="artist"><rect x="6" y="57" width="60" height="13"/></clipPath></defs>' +
+    '<defs><linearGradient id="captionShade" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#000" stop-opacity="0"/><stop offset=".5" stop-color="#000" stop-opacity=".5"/><stop offset="1" stop-color="#000" stop-opacity=".88"/></linearGradient>' +
+    '<clipPath id="caption"><rect x="6" y="' + textTop + '" width="60" height="' + (72 - textTop) + '"/></clipPath><clipPath id="track"><rect x="6" y="48" width="60" height="13"/></clipPath><clipPath id="artist"><rect x="6" y="60" width="60" height="12"/></clipPath></defs>' +
     '<rect width="72" height="72" fill="#202020"/>' + image +
     (playback ? '<g id="playback-control"><rect x="4" y="4" width="16" height="14" rx="3" fill="#000" fill-opacity=".84"/>' +
       (playbackState === 'playing' ? '<path id="playback-pause" d="M9 7h2v8H9z M13 7h2v8h-2z" fill="#fff"/>' : '<path id="playback-play" d="M10 7l6 4-6 4z" fill="#fff"/>') + '</g>' : '') +
     (remaining ? '<rect x="' + (68 - badgeWidth) + '" y="4" width="' + badgeWidth + '" height="14" rx="3" fill="#000" fill-opacity=".84"/>' + drawLine(time, 14, '#fff', 0, 68 - badgeWidth / 2) : '') +
-    (layout.showText ? '<rect y="42" width="72" height="30" fill="#000" fill-opacity=".84"/>' +
-    '<g clip-path="url(#caption)"><g clip-path="url(#track)">' + drawLine(layout.track, 55, '#fff', scrollOffset(layout.track.width, elapsedMs)) +
-    '</g><g clip-path="url(#artist)">' + drawLine(layout.artist, 67, '#dedede', scrollOffset(layout.artist.width, elapsedMs)) + '</g></g>' : '') + '</svg>';
+    (layout.showText ? '<rect y="' + (textTop - 2) + '" width="72" height="' + (74 - textTop) + '" fill="url(#captionShade)"/>' +
+    '<g clip-path="url(#caption)"><g stroke="#000" stroke-width=".35" stroke-linejoin="round">' + caption + '</g></g>' : '') + '</svg>';
 }
 export function captionSvg(cover, title, artists, fonts = {}, options = {}) {
   return renderCaption(cover, prepareCaption(title, artists, fonts, options), fonts, options);
@@ -125,14 +131,14 @@ export class ArtworkRenderer {
       cover = await this.fallback;
     }
     const fonts = await this.fonts;
-    const layoutKey = JSON.stringify([title, artists, options.showText !== false, options.scrollText === true]);
+    const layoutKey = JSON.stringify([title, artists, options.showText !== false, options.scrollText === true, options.captionLayout === 'compact']);
     let layout = this.layouts.get(layoutKey);
     if (!layout) {
       layout = prepareCaption(title, artists, fonts, options);
       this.layouts.set(layoutKey, layout);
       while (this.layouts.size > 8) this.layouts.delete(this.layouts.keys().next().value);
     }
-    const key = JSON.stringify([cover, layoutKey, layout.showText ? scrollOffset(layout.track.width, options.elapsedMs) : 0, layout.showText ? scrollOffset(layout.artist.width, options.elapsedMs) : 0, formatRemaining(options.remainingMs), options.playbackState]);
+    const key = JSON.stringify([cover, layoutKey, layout.showText ? scrollOffset((layout.combined ?? layout.track).width, options.elapsedMs) : 0, layout.showText && !layout.compact ? scrollOffset(layout.artist.width, options.elapsedMs) : 0, formatRemaining(options.remainingMs), options.playbackState]);
     if (this.cache.has(key)) return this.cache.get(key);
     const svg = renderCaption(cover, layout, fonts, options);
     const image = 'data:image/svg+xml;base64,' + Buffer.from(svg).toString('base64');

@@ -94,6 +94,38 @@ test('remaining time uses milliseconds, pauses with playback and hides unknown d
   for (const [value, expected] of [[0, '-0:00'], [1, '-0:01'], [60000, '-1:00'], [3600000, '-1:00:00'], [NaN, ''], [undefined, '']]) assert.equal(formatRemaining(value), expected);
 });
 
+test('compact captions keep title and artist on one scrolling line above a smaller gradient', () => {
+  const options = { captionLayout: 'compact', scrollText: true };
+  const initial = captionSvg('', 'Été à Montréal', 'Éléonore & François', {}, options);
+  const moved = captionSvg('', 'Été à Montréal', 'Éléonore & François', {}, { ...options, elapsedMs: 5000 });
+  assert.ok(initial.includes('Été à Montréal • Éléonore &amp; François'));
+  assert.equal((initial.match(/<text /g) || []).length, 1);
+  assert.ok(!initial.includes('<g clip-path="url(#artist)">'));
+  assert.ok(initial.includes('<rect y="54" width="72" height="18" fill="url(#captionShade)"/>'));
+  assert.ok(initial.includes('stop-opacity="0"'));
+  assert.ok(initial.includes('stroke-width=".35"'));
+  assert.notEqual(initial, moved);
+  assert.equal(initial, captionSvg('', 'Été à Montréal', 'Éléonore & François', {}, { ...options, elapsedMs: 1500 }));
+  const noArtist = captionSvg('', 'Track', '', {}, options);
+  assert.ok(!noArtist.includes(' • '), 'An empty artist must not leave a dangling separator');
+  const shortened = captionSvg('', 'Long title '.repeat(10), 'Long artist '.repeat(10), {}, { captionLayout: 'compact', scrollText: false });
+  const visibleText = shortened.match(/<text [^>]*>([^<]*)<\/text>/)[1];
+  assert.ok(visibleText.endsWith('…'));
+});
+
+test('switching caption layout cannot return an image cached for the other layout', async () => {
+  const layoutRenderer = new ArtworkRenderer({ fallbackPath: new URL('../streamdeck/imgs/music.png', import.meta.url) });
+  const options = { captionLayout: 'compact', scrollText: true };
+  const compact = await layoutRenderer.render('', 'Perfect', 'Kaley, LYON', options);
+  const twoLines = await layoutRenderer.render('', 'Perfect', 'Kaley, LYON', { ...options, captionLayout: 'twoLines' });
+  assert.notEqual(compact, twoLines);
+  assert.equal(compact, await layoutRenderer.render('', 'Perfect', 'Kaley, LYON', options));
+  const hidden = await layoutRenderer.render('', 'Perfect', 'Kaley, LYON', { ...options, showText: false, playbackState: 'paused', remainingMs: 60000 });
+  const svg = Buffer.from(hidden.split(',')[1], 'base64').toString();
+  assert.ok(!svg.includes('<g clip-path="url(#caption)">'));
+  assert.ok(svg.includes('id="playback-play"'));
+});
+
 test('timer can appear without captions and animation caches remain bounded', async () => {
   const fallback = new ArtworkRenderer({ loadFonts: async () => ({}), fallbackPath: new URL('../streamdeck/imgs/music.png', import.meta.url) });
   const timer = await fallback.render('', 'Title', 'Artist', { showText: false, remainingMs: 154000 });

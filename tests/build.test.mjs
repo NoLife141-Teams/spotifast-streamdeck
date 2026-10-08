@@ -10,7 +10,7 @@ test('R12/R05: rebuilding removes obsolete output and preserves the release lice
   const temporaryRoot = path.join(root, '.local-backups'); await mkdir(temporaryRoot, { recursive: true });
   const fixture = await mkdtemp(path.join(temporaryRoot, 'build-test-'));
   try {
-    for (const file of ['src', 'streamdeck', 'scripts', 'package.json', 'LICENSE']) await cp(path.join(root, file), path.join(fixture, file), { recursive: true });
+    for (const file of ['src', 'streamdeck', 'scripts', 'third-party', 'package.json', 'LICENSE']) await cp(path.join(root, file), path.join(fixture, file), { recursive: true });
     const build = () => execFileSync(process.execPath, ['scripts/build.mjs'], { cwd: fixture, windowsHide: true, encoding: 'utf8', shell: false });
     build(); const output = path.join(fixture, 'build/rocks.spotifast.streamdeck.sdPlugin');
     await writeFile(path.join(output, 'ui/obsolete.txt'), 'obsolete'); const sibling = path.join(fixture, 'build/preserve.txt'); await writeFile(sibling, 'preserve'); build();
@@ -18,6 +18,9 @@ test('R12/R05: rebuilding removes obsolete output and preserves the release lice
     assert.equal(await readFile(path.join(output, 'LICENSE'), 'utf8'), await readFile(path.join(fixture, 'LICENSE'), 'utf8'));
     const metadata = JSON.parse(await readFile(path.join(fixture, 'package.json'), 'utf8')); const manifest = JSON.parse(await readFile(path.join(output, 'manifest.json'), 'utf8')); assert.equal(manifest.Version, metadata.version + '.0');
     const notices = await readFile(path.join(output, 'THIRD_PARTY_NOTICES.txt'), 'utf8'); assert.match(notices, /@elgato\/schemas 0\.5\.1/);
+    assert.match(notices, /sharp 0\.35\.5/); assert.match(notices, /libvips.*LGPLv3/);
+    await access(path.join(output, 'node_modules/@img/sharp-win32-x64/lib/libvips-42.dll'));
+    assert.match(await readFile(path.join(output, 'third-party/LGPL-3.0.txt'), 'utf8'), /GNU LESSER GENERAL PUBLIC LICENSE/);
   } finally {
     if (path.dirname(fixture) !== temporaryRoot || !path.basename(fixture).startsWith('build-test-')) throw new Error('Unsafe test cleanup path');
     await rm(fixture, { recursive: true, force: true });

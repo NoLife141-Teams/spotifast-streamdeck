@@ -224,6 +224,11 @@ var ArtworkCache = class {
     while (this.cache.size > 8) this.cache.delete(this.cache.keys().next().value);
     return value;
   }
+  isFresh(url, value) {
+    // Check the original deadline even when a key already holds this image.
+    const cached = this.cache.get(url);
+    return !!value && cached?.value === value && cached.expires > (this.now?.() ?? Date.now());
+  }
 };
 function shortText(value, max = 13) {
   const chars = Array.from(String(value));

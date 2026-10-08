@@ -14,7 +14,7 @@
     "pack": "streamdeck pack build/rocks.spotifast.streamdeck.sdPlugin --output dist"
   },
   "dependencies": {
-    "@elgato/streamdeck": "2.1.2",
+    "@elgato/streamdeck": "3.0.1",
     "opentype.js": "2.0.0"
   },
   "devDependencies": {

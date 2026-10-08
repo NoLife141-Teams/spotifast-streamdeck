@@ -173,3 +173,25 @@ test('R10: fallback glyphs have an explicit SVG width and reject invalid XML con
   }
   assert.ok(!captionSvg('', 'A' + String.fromCharCode(1) + 'B', '').includes(String.fromCharCode(1)));
 });
+
+test('animation uses measured caption widths for the selected layout', async () => {
+  const options = { scrollText: true, captionLayout: 'twoLines' };
+  assert.equal(await renderer.hasScrollingText('Hi', '', options), false);
+  assert.equal(await renderer.hasScrollingText('WWWW', 'WWWW', options), false);
+  assert.equal(await renderer.hasScrollingText('WWWW', 'WWWW', { ...options, captionLayout: 'compact' }), true);
+  assert.equal(await renderer.hasScrollingText('An exceptionally long song title', '', options), true);
+  assert.equal(await renderer.hasScrollingText('Hi', 'An exceptionally long artist name', options), true);
+  assert.equal(await renderer.hasScrollingText('🎵'.repeat(20), '', options), true);
+  assert.equal(await renderer.hasScrollingText('Long title '.repeat(20), '', { ...options, scrollText: false }), false);
+  assert.equal(await renderer.hasScrollingText('Long title '.repeat(20), '', { ...options, showText: false }), false);
+});
+
+test('scroll detection reuses the rendering layout and works without system fonts', async () => {
+  const fallback = new ArtworkRenderer({ loadFonts: async () => ({}), fallbackPath: new URL('../streamdeck/imgs/music.png', import.meta.url) });
+  const options = { scrollText: true, captionLayout: 'compact' };
+  assert.equal(await fallback.hasScrollingText('Hi', '', options), false);
+  const layout = fallback.layouts.values().next().value;
+  await fallback.render('', 'Hi', '', options);
+  assert.equal(fallback.layouts.size, 1); assert.equal(fallback.layouts.values().next().value, layout);
+  assert.equal(await fallback.hasScrollingText('👨‍👩‍👧‍👦'.repeat(20), '', options), true);
+});

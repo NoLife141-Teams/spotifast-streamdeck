@@ -36,6 +36,8 @@ La pochette affiche par défaut une seule ligne **titre • artiste**, défilant
 
 Le temps restant apparaît en haut à droite, en chiffres blancs gras avec un fin contour noir, sans rectangle de fond. La pochette reste visible autour des chiffres.
 
+L’animation s’adapte au contenu : dix images par seconde pour les textes qui dépassent la largeur disponible et pour le symbole Lecture/Pause, une mise à jour par seconde pour un compteur seul en lecture, et aucune boucle d’animation lorsque l’affichage est fixe. En pause, les titres longs continuent de défiler mais un titre court avec un compteur figé reste immobile. Plusieurs touches partagent une seule boucle, avec une fréquence adaptée à chacune.
+
 Version 0.2.2 corrige les constats R01 à R13 : états des boutons synchronisés, multi-actions explicites, conservation des réglages, file de commandes limitée, erreurs localisées, légendes Unicode ajustées et pochettes téléchargées sans bloquer les mises à jour. Les identifiants des actions sont conservés. L’ouverture d’une playlist depuis un lien Spotify a été testée par l’utilisateur. Les tests couvrent Node 20 et 22, les deux langues et le SDK Elgato; la validation du paquet Elgato réussit. Les molettes nécessitent un Stream Deck +; leur fonctionnement physique reste à vérifier sur ce modèle.
 
 ## English
@@ -69,6 +71,8 @@ Version 0.2.3 adds scrolling for long titles and artist names on **Play / Pause 
 Artwork defaults to one **title • artist** line, scrolling when needed. Its band is 18 pixels high instead of 30, using a transparent gradient and a thin text outline to keep more artwork visible. **Text layout** can switch back to two lines; unchecking **Show the title and artist on the artwork** hides the caption entirely. Playback controls and the countdown remain independent of this choice.
 
 Remaining time appears at the top right as bold white digits with a thin black outline and no background rectangle. The artwork remains visible around the digits.
+
+Animation adapts to the content: ten frames per second for overflowing text and playback feedback, one update per second for a playing countdown alone, and no animation loop for a stationary display. While paused, long captions continue scrolling, but a short caption with a frozen countdown stays idle. Multiple keys share one loop, with each key updated at its own required rate.
 
 Version 0.2.2 addresses review findings R01–R13: synchronized button states, explicit Multi Actions, preserved settings, bounded command queue, localized errors, fitted Unicode captions and background artwork downloads. Existing action identifiers are preserved. A user has successfully tested opening a playlist from a Spotify link. Tests cover Node 20 and 22, both languages and the Elgato SDK; Elgato package validation passes. Dial controls require a Stream Deck + and still need a hardware test on that model.
 

@@ -28,7 +28,7 @@ Les multi-actions peuvent définir explicitement Lecture/Pause, Aléatoire activ
 
 La version 0.2.3 en préparation ajoute le défilement des titres et noms d’artistes trop longs sur **Lecture / Pause avec pochette**, ainsi qu’un compteur du temps restant en haut de la touche. Le texte revient progressivement au début, avec un ralentissement aux extrémités et jusqu’à dix images par seconde. Les textes courts restent immobiles. Le compteur se fige en pause et disparaît si la durée est inconnue. Les options **Faire défiler les titres et noms d’artistes longs** et **Afficher le temps restant du morceau** sont activées par défaut et peuvent être désactivées séparément; le compteur peut aussi s’afficher sans les légendes.
 
-**Lecture / Pause (icône)** et **Lecture / Pause avec pochette** contrôlent toutes deux la lecture. La seconde affiche la pochette et un petit symbole qui indique l’action de la touche : ▶ pour reprendre, ⏸ pour mettre en pause. Ce symbole reste visible si les légendes et le compteur sont masqués.
+**Lecture / Pause (icône)** et **Lecture / Pause avec pochette** contrôlent toutes deux la lecture. La pochette n’a pas de symbole permanent. Après un appui confirmé par le lecteur, un grand symbole s’affiche au centre pendant une seconde : ▶ quand la lecture reprend, ⏸ quand elle se met en pause. Le symbole disparaît progressivement, puis la pochette retrouve son affichage normal. Cette confirmation fonctionne aussi quand les légendes et le compteur sont masqués.
 
 **Favori** affiche un cœur plein quand le morceau est ajouté, et un cœur vide sinon. Les deux états gardent un fond noir.
 
@@ -60,7 +60,7 @@ Multi Actions can explicitly set Play/Pause, Shuffle on/off, and Repeat off/cont
 
 The upcoming 0.2.3 version adds scrolling for long titles and artist names on **Play / Pause with artwork**, plus a remaining-time counter at the top of the key. Text returns gradually to the beginning, easing at both ends with up to ten frames per second. Short text stays stationary. The counter freezes when paused and hides when duration is unknown. **Scroll long titles and artist names** and **Show the remaining track time** default to enabled and can be disabled separately; the timer can also appear without captions.
 
-**Play / Pause (icon)** and **Play / Pause with artwork** both control playback. The latter shows the cover and a small symbol for the available action: ▶ to resume, ⏸ to pause. This symbol remains visible when captions and the countdown are hidden.
+**Play / Pause (icon)** and **Play / Pause with artwork** both control playback. Artwork has no permanent playback symbol. After a press is confirmed by the player, a large symbol appears in the center for one second: ▶ when playback resumes, ⏸ when it pauses. The symbol fades out and the cover returns to its normal display. This feedback also works when captions and the countdown are hidden.
 
 **Favorite** shows a filled heart when the track is saved and an outlined heart otherwise. Both states use a black background.
 

@@ -19,12 +19,12 @@ const html = `<!doctype html><html lang="fr"><meta charset="utf-8"><title>Défil
 <h2>Taille réelle · 72 × 72</h2><div class="samples">${[...samples.keys()].map(id => `<figure><img data-sample="${id}" src="/frame.svg?id=${id}"><figcaption>${id}</figcaption></figure>`).join('')}</div>
 <h2>Agrandissement · 144 × 144</h2><div class="samples">${['long', 'perfect', 'emoji'].map(id => `<figure><img class="large" data-sample="${id}" src="/frame.svg?id=${id}"></figure>`).join('')}</div>
 <script>
-const start=performance.now();let playing=true,played=0,last=start,busy=false;
+const start=performance.now();let playing=true,played=0,last=start,busy=false,feedbackUntil=0,feedbackState='';
 const controls={scroll:document.getElementById('scroll'),remaining:document.getElementById('remaining'),text:document.getElementById('text'),layout:document.getElementById('layout')};
-const togglePlayback=()=>{const clock=performance.now();if(playing)played+=clock-last;last=clock;playing=!playing;document.getElementById('pause').textContent=playing?'Mettre l’aperçu en pause':'Reprendre l’aperçu';};
+const togglePlayback=()=>{const clock=performance.now();if(playing)played+=clock-last;last=clock;playing=!playing;feedbackState=playing?'playing':'paused';feedbackUntil=clock+1000;document.getElementById('pause').textContent=playing?'Mettre l’aperçu en pause':'Reprendre l’aperçu';};
 document.getElementById('pause').onclick=togglePlayback;
 document.querySelectorAll('img[data-sample]').forEach(img=>img.onclick=togglePlayback);
-window.previewFrame=()=>{const clock=performance.now();return {elapsed:Math.round(clock-start),remaining:Math.max(0,154000-played-(playing?clock-last:0)),scroll:controls.scroll.checked,text:controls.text.checked,showRemaining:controls.remaining.checked,playbackState:playing?'playing':'paused'};};
+window.previewFrame=()=>{const clock=performance.now();return {elapsed:Math.round(clock-start),remaining:Math.max(0,154000-played-(playing?clock-last:0)),scroll:controls.scroll.checked,text:controls.text.checked,showRemaining:controls.remaining.checked,playbackFeedback:clock<feedbackUntil?feedbackState:'',feedbackOpacity:Math.min(1,Math.max(0,(feedbackUntil-clock)/200))};};
 async function paint(){if(busy)return;busy=true;try{const f=window.previewFrame();await Promise.all([...document.querySelectorAll('img[data-sample]')].map(async img=>{const old=img.dataset.frameUrl;const query=new URLSearchParams({id:img.dataset.sample,...f,captionLayout:img.dataset.layout||controls.layout.value});const blob=await(await fetch('/frame.svg?'+query)).blob();const next=URL.createObjectURL(blob);await new Promise(resolve=>{img.onload=img.onerror=resolve;img.src=next;});img.dataset.frameUrl=next;if(old)URL.revokeObjectURL(old);}));}finally{busy=false;}}
 paint();setInterval(paint,100);
 </script></html>`;
@@ -36,7 +36,7 @@ const server = http.createServer(async (request, response) => {
       const elapsedMs = Math.max(0, Number(url.searchParams.get('elapsed')) || 0);
       const remainingMs = url.searchParams.get('showRemaining') === 'false' ? undefined : Math.max(0, Number(url.searchParams.get('remaining') ?? 154000));
       const captionLayout = url.searchParams.get('captionLayout');
-      const image = await renderer.render(cover, ...sample, { elapsedMs, remainingMs, scrollText: url.searchParams.get('scroll') !== 'false', showText: url.searchParams.get('text') !== 'false' && captionLayout !== 'none', captionLayout: captionLayout === 'twoLines' ? 'twoLines' : 'compact', playbackState: url.searchParams.get('playbackState') === 'paused' ? 'paused' : 'playing' });
+      const image = await renderer.render(cover, ...sample, { elapsedMs, remainingMs, scrollText: url.searchParams.get('scroll') !== 'false', showText: url.searchParams.get('text') !== 'false' && captionLayout !== 'none', captionLayout: captionLayout === 'twoLines' ? 'twoLines' : 'compact', playbackFeedback: url.searchParams.get('playbackFeedback') || undefined, feedbackOpacity: Number(url.searchParams.get('feedbackOpacity') ?? 1) });
       response.writeHead(200, { 'content-type': 'image/svg+xml', 'cache-control': 'no-store' });
       response.end(Buffer.from(image.split(',')[1], 'base64'));
     } else {

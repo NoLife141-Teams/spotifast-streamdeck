@@ -11,6 +11,7 @@ export function createRuntime(streamDeck, {
   let state, online = false, refreshing, refreshAgain = false, configured = false, configuration = 0;
   let lastError = '', uiSession = 0, uiRevision = 0, refreshTimer, interval;
   let sampledAt = 0, animationInterval, animating, started = false;
+  let playbackRequest;
   let resolveConfigured;
   const ready = new Promise(resolve => { resolveConfigured = resolve; });
   const suffix = action => action.manifestId.slice(UUID.length + 1);
@@ -20,10 +21,49 @@ export function createRuntime(streamDeck, {
     type: 'status', online: connected, messageKey, trackTitle: title, message: t(messageKey, { title })
   });
   const invalidate = entry => { entry.signature = undefined; entry.renderRevision = (entry.renderRevision || 0) + 1; };
+  const trackKey = snapshot => JSON.stringify([snapshot?.title, snapshot?.artists, snapshot?.album, snapshot?.artUrl]);
+  function clearPlaybackFeedback(entry) {
+    timers.clearTimeout(entry.playbackFeedbackTimer);
+    entry.playbackFeedbackTimer = undefined;
+    entry.playbackFeedback = undefined;
+  }
+  function resetPlaybackFeedback() {
+    playbackRequest = undefined;
+    for (const entry of visible.values()) {
+      if (entry.playbackFeedback) invalidate(entry);
+      clearPlaybackFeedback(entry);
+    }
+  }
+  function showPlaybackFeedback(entry, playbackState, snapshot) {
+    clearPlaybackFeedback(entry);
+    const feedback = entry.playbackFeedback = { state: playbackState, track: trackKey(snapshot), until: now() + 1000 };
+    invalidate(entry);
+    entry.playbackFeedbackTimer = timers.setTimeout(() => {
+      if (visible.get(entry.action.id) !== entry || entry.playbackFeedback !== feedback) return;
+      clearPlaybackFeedback(entry);
+      invalidate(entry);
+      updateAnimationTimer();
+      render(entry).catch(report);
+    }, 1000);
+  }
+  function confirmPlayback(snapshot) {
+    const request = playbackRequest;
+    if (!request?.accepted) return;
+    if (now() >= request.until || (request.track && request.track !== trackKey(snapshot))) {
+      playbackRequest = undefined;
+      return;
+    }
+    if (snapshot.state === request.before || !['playing', 'paused'].includes(snapshot.state)) return;
+    playbackRequest = undefined;
+    for (const entry of request.entries) {
+      if (visible.get(entry.action.id) === entry) showPlaybackFeedback(entry, snapshot.state, snapshot);
+    }
+  }
   function configure(settings = {}) {
     client.configure(settings.exePath ?? '');
     t = translations.createTranslator(translations.resolveLanguage(settings.language, streamDeck.info.application.language));
     configuration++;
+    resetPlaybackFeedback();
     configured = true;
     resolveConfigured();
     for (const entry of visible.values()) invalidate(entry);
@@ -49,6 +89,7 @@ export function createRuntime(streamDeck, {
     const id = suffix(action);
     let title = '', picture, feedback, buttonState;
     if (!connected) {
+      clearPlaybackFeedback(entry);
       entry.captionKey = undefined;
       title = t('openButton');
       if (id === 'nowplaying') picture = 'imgs/music.png';
@@ -65,10 +106,14 @@ export function createRuntime(streamDeck, {
         const captionKey = JSON.stringify([snapshot.title, snapshot.artists, snapshot.album, snapshot.duration, snapshot.artUrl, settings.showText, settings.scrollText, settings.captionLayout]);
         if (entry.captionKey !== captionKey) { entry.captionKey = captionKey; entry.captionStartedAt = clock; }
         const remainingMs = settings.showRemaining !== false ? remainingTime(snapshot, clock - sampledAt) : undefined;
+        if (entry.playbackFeedback && (clock >= entry.playbackFeedback.until || entry.playbackFeedback.state !== snapshot.state || entry.playbackFeedback.track !== trackKey(snapshot))) clearPlaybackFeedback(entry);
+        const playbackFeedback = entry.playbackFeedback;
         picture = await artworkRenderer.render(entry.artImage, snapshot.title || t('noTrack'), snapshot.title ? snapshot.artists : '', {
           showText: settings.showText !== false, scrollText: settings.scrollText !== false,
           captionLayout: settings.captionLayout === 'twoLines' ? 'twoLines' : 'compact',
-          elapsedMs: Math.max(0, clock - entry.captionStartedAt), remainingMs, playbackState: snapshot.state
+          elapsedMs: Math.max(0, clock - entry.captionStartedAt), remainingMs,
+          playbackFeedback: playbackFeedback?.state,
+          feedbackOpacity: playbackFeedback ? Math.min(1, Math.max(0, (playbackFeedback.until - clock) / 200)) : undefined
         });
       }
       if (['volumeup', 'volumedown', 'mute'].includes(id)) title = snapshot.volume === null ? '' : snapshot.volume + '%';
@@ -90,11 +135,11 @@ export function createRuntime(streamDeck, {
     for (const result of results) if (result.status === 'rejected') report(result.reason);
   }
   const animatedEntry = entry => suffix(entry.action) === 'nowplaying' &&
-    ((entry.settings.showText !== false && entry.settings.scrollText !== false) || entry.settings.showRemaining !== false);
+    (entry.playbackFeedback || (entry.settings.showText !== false && entry.settings.scrollText !== false) || entry.settings.showRemaining !== false);
   function animate() {
     if (animating) return animating;
     if (!started || !online) return Promise.resolve();
-    animating = renderEntries([...visible.values()].filter(animatedEntry)).finally(() => { animating = undefined; });
+    animating = renderEntries([...visible.values()].filter(animatedEntry)).finally(() => { animating = undefined; updateAnimationTimer(); });
     return animating;
   }
   function updateAnimationTimer() {
@@ -122,9 +167,11 @@ export function createRuntime(streamDeck, {
           const next = await client.snapshot();
           if (config !== configuration) { refreshAgain = true; continue; }
           state = next; sampledAt = now(); online = true; lastError = '';
+          confirmPlayback(next);
         } catch (error) {
           if (config !== configuration) { refreshAgain = true; continue; }
           online = false;
+          resetPlaybackFeedback();
           const message = error.message ?? t('unavailable');
           if (message !== lastError) streamDeck.logger.warn(t('unavailable'));
           lastError = message;
@@ -150,14 +197,30 @@ export function createRuntime(streamDeck, {
   }
   async function perform(event, args) {
     const token = inspectorToken(event.action);
+    let request;
     try {
       await ready;
+      if (['play-pause', 'play', 'pause'].includes(args?.[0])) {
+        resetPlaybackFeedback();
+        request = playbackRequest = {
+          before: state?.state, track: state?.title ? trackKey(state) : undefined, accepted: false,
+          entries: [...visible.values()].filter(entry => suffix(entry.action) === 'nowplaying')
+        };
+        updateAnimationTimer();
+        renderEntries(request.entries).catch(report);
+      }
       if (suffix(event.action) === 'open') await client.open();
       else await client.run(args);
+      if (!started) return;
+      if (request && playbackRequest === request) { request.accepted = true; request.until = now() + 5000; }
       const entry = visible.get(event.action.id);
       if (entry) invalidate(entry);
       scheduleRefresh();
-    } catch (error) { await failed(event, error, token); }
+    } catch (error) {
+      if (request && playbackRequest === request) playbackRequest = undefined;
+      if (!started) return;
+      await failed(event, error, token);
+    }
   }
   async function performInvalid(event, error) { await failed(event, error, inspectorToken(event.action)); }
   async function inspectorRequest(event) {
@@ -181,6 +244,7 @@ export function createRuntime(streamDeck, {
   });
   streamDeck.actions.onWillDisappear(event => {
     const entry = visible.get(event.action.id); if (entry) invalidate(entry);
+    if (entry) clearPlaybackFeedback(entry);
     visible.delete(event.action.id);
     updateAnimationTimer();
   });
@@ -206,6 +270,7 @@ export function createRuntime(streamDeck, {
   streamDeck.system.onSystemDidWakeUp(() => {
     client.configure(client.customPath);
     configuration++;
+    resetPlaybackFeedback();
     for (const entry of visible.values()) invalidate(entry);
     refresh().catch(report);
   });
@@ -219,6 +284,6 @@ export function createRuntime(streamDeck, {
       await refresh();
       interval = timers.setInterval(() => refresh().catch(report), 1500);
     },
-    stop() { started = false; timers.clearTimeout(refreshTimer); timers.clearInterval(interval); timers.clearInterval(animationInterval); animationInterval = undefined; }
+    stop() { started = false; resetPlaybackFeedback(); timers.clearTimeout(refreshTimer); timers.clearInterval(interval); timers.clearInterval(animationInterval); animationInterval = undefined; }
   };
 }

@@ -85,9 +85,10 @@ function drawLine(line, baseline, fill, offset = 0, center = SIZE / 2) {
     '<text x="0" y="0" font-family="Arial,sans-serif" font-size="' + line.size + '" textLength="' + line.width + '" lengthAdjust="spacingAndGlyphs" fill="' + fill + '">' + xml(line.text) + '</text>';
   return '<g transform="translate(' + x + ' ' + baseline + ')">' + glyphs + '</g>';
 }
-function renderCaption(cover, layout, fonts, { elapsedMs = 0, remainingMs, playbackState } = {}) {
-  const playback = ['playing', 'paused', 'stopped'].includes(playbackState);
-  const timerWidth = playback ? 38 : TEXT_WIDTH;
+function renderCaption(cover, layout, fonts, { elapsedMs = 0, remainingMs, playbackFeedback, feedbackOpacity = 1 } = {}) {
+  const feedback = ['playing', 'paused'].includes(playbackFeedback);
+  const opacity = Math.round(Math.max(0, Math.min(1, Number.isFinite(feedbackOpacity) ? feedbackOpacity : 1)) * 100) / 100;
+  const timerWidth = TEXT_WIDTH;
   const remaining = formatRemaining(remainingMs);
   let time = prepareLine(remaining, fonts.regular, { maxSize: 9, minSize: 8.5, maxWidth: timerWidth });
   // Keep every digit even if system fonts are unavailable or the track lasts hours.
@@ -107,8 +108,8 @@ function renderCaption(cover, layout, fonts, { elapsedMs = 0, remainingMs, playb
     '<defs><linearGradient id="captionShade" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#000" stop-opacity="0"/><stop offset=".5" stop-color="#000" stop-opacity=".5"/><stop offset="1" stop-color="#000" stop-opacity=".88"/></linearGradient>' +
     '<clipPath id="caption"><rect x="6" y="' + textTop + '" width="60" height="' + (72 - textTop) + '"/></clipPath><clipPath id="track"><rect x="6" y="48" width="60" height="13"/></clipPath><clipPath id="artist"><rect x="6" y="60" width="60" height="12"/></clipPath></defs>' +
     '<rect width="72" height="72" fill="#202020"/>' + image +
-    (playback ? '<g id="playback-control"><rect x="4" y="4" width="16" height="14" rx="3" fill="#000" fill-opacity=".84"/>' +
-      (playbackState === 'playing' ? '<path id="playback-pause" d="M9 7h2v8H9z M13 7h2v8h-2z" fill="#fff"/>' : '<path id="playback-play" d="M10 7l6 4-6 4z" fill="#fff"/>') + '</g>' : '') +
+    (feedback && opacity > 0 ? '<g id="playback-feedback" opacity="' + opacity + '"><rect x="20" y="20" width="32" height="32" rx="7" fill="#000" fill-opacity=".84"/>' +
+      (playbackFeedback === 'paused' ? '<path id="playback-pause" d="M28 27h6v18h-6z M38 27h6v18h-6z" fill="#fff"/>' : '<path id="playback-play" d="M31 26l14 10-14 10z" fill="#fff"/>') + '</g>' : '') +
     (remaining ? '<rect x="' + (68 - badgeWidth) + '" y="4" width="' + badgeWidth + '" height="14" rx="3" fill="#000" fill-opacity=".84"/>' + drawLine(time, 14, '#fff', 0, 68 - badgeWidth / 2) : '') +
     (layout.showText ? '<rect y="' + (textTop - 2) + '" width="72" height="' + (74 - textTop) + '" fill="url(#captionShade)"/>' +
     '<g clip-path="url(#caption)"><g stroke="#000" stroke-width=".35" stroke-linejoin="round">' + caption + '</g></g>' : '') + '</svg>';
@@ -138,7 +139,7 @@ export class ArtworkRenderer {
       this.layouts.set(layoutKey, layout);
       while (this.layouts.size > 8) this.layouts.delete(this.layouts.keys().next().value);
     }
-    const key = JSON.stringify([cover, layoutKey, layout.showText ? scrollOffset((layout.combined ?? layout.track).width, options.elapsedMs) : 0, layout.showText && !layout.compact ? scrollOffset(layout.artist.width, options.elapsedMs) : 0, formatRemaining(options.remainingMs), options.playbackState]);
+    const key = JSON.stringify([cover, layoutKey, layout.showText ? scrollOffset((layout.combined ?? layout.track).width, options.elapsedMs) : 0, layout.showText && !layout.compact ? scrollOffset(layout.artist.width, options.elapsedMs) : 0, formatRemaining(options.remainingMs), options.playbackFeedback, Math.round((options.feedbackOpacity ?? 1) * 100) / 100]);
     if (this.cache.has(key)) return this.cache.get(key);
     const svg = renderCaption(cover, layout, fonts, options);
     const image = 'data:image/svg+xml;base64,' + Buffer.from(svg).toString('base64');

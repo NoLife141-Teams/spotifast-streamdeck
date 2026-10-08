@@ -62,24 +62,27 @@ test('the return and loop seam stay continuous, with gentle starts and no large 
   }
 });
 
-test('artwork shows the available playback action even with captions and timer hidden', async () => {
+test('artwork has no permanent playback badge and transient feedback reports the confirmed state', async () => {
   const iconRenderer = new ArtworkRenderer({ fallbackPath: new URL('../streamdeck/imgs/music.png', import.meta.url) });
-  const options = { showText: false, playbackState: 'paused' };
-  const play = await iconRenderer.render('', 'Track', 'Artist', options);
-  const pause = await iconRenderer.render('', 'Track', 'Artist', { ...options, playbackState: 'playing' });
+  const options = { showText: false };
+  const cover = await iconRenderer.render('', 'Track', 'Artist', options);
+  const play = await iconRenderer.render('', 'Track', 'Artist', { ...options, playbackFeedback: 'playing' });
+  const pause = await iconRenderer.render('', 'Track', 'Artist', { ...options, playbackFeedback: 'paused' });
   const decode = image => Buffer.from(image.split(',')[1], 'base64').toString();
+  assert.ok(!decode(cover).includes('id="playback-'));
   assert.ok(decode(play).includes('id="playback-play"'));
   assert.ok(!decode(play).includes('id="playback-pause"'));
   assert.ok(decode(pause).includes('id="playback-pause"'));
   assert.ok(!decode(pause).includes('id="playback-play"'));
   assert.ok(!decode(pause).includes('<g clip-path="url(#caption)">'));
   assert.notEqual(play, pause, 'The image cache must distinguish playback states');
-  assert.equal(play, await iconRenderer.render('', 'Track', 'Artist', options));
-  assert.ok(decode(await iconRenderer.render('', 'Track', 'Artist', { ...options, playbackState: 'stopped' })).includes('id="playback-play"'));
+  assert.equal(play, await iconRenderer.render('', 'Track', 'Artist', { ...options, playbackFeedback: 'playing' }));
+  const fading = await iconRenderer.render('', 'Track', 'Artist', { ...options, playbackFeedback: 'paused', feedbackOpacity: 0.5 });
+  assert.ok(decode(fading).includes('id="playback-feedback" opacity="0.5"'));
+  assert.notEqual(fading, pause, 'The image cache must distinguish fade levels');
+  assert.equal(cover, await iconRenderer.render('', 'Track', 'Artist', { ...options, playbackFeedback: 'paused', feedbackOpacity: 0 }));
   const timed = captionSvg('', 'Track', 'Artist', {}, { ...options, remainingMs: 123456789 });
-  assert.ok(timed.includes('-34:17:37'), 'Every digit should remain visible beside the playback control');
-  const timer = timed.match(/<rect x="([0-9.]+)" y="4" width="([0-9.]+)" height="14"/g).at(-1);
-  assert.ok(Number(timer.match(/x="([0-9.]+)"/)[1]) >= 22, 'The timer must not overlap the playback control');
+  assert.ok(timed.includes('-34:17:37'), 'Every digit should remain visible');
 });
 
 test('remaining time uses milliseconds, pauses with playback and hides unknown durations', () => {
@@ -120,10 +123,10 @@ test('switching caption layout cannot return an image cached for the other layou
   const twoLines = await layoutRenderer.render('', 'Perfect', 'Kaley, LYON', { ...options, captionLayout: 'twoLines' });
   assert.notEqual(compact, twoLines);
   assert.equal(compact, await layoutRenderer.render('', 'Perfect', 'Kaley, LYON', options));
-  const hidden = await layoutRenderer.render('', 'Perfect', 'Kaley, LYON', { ...options, showText: false, playbackState: 'paused', remainingMs: 60000 });
+  const hidden = await layoutRenderer.render('', 'Perfect', 'Kaley, LYON', { ...options, showText: false, playbackFeedback: 'paused', remainingMs: 60000 });
   const svg = Buffer.from(hidden.split(',')[1], 'base64').toString();
   assert.ok(!svg.includes('<g clip-path="url(#caption)">'));
-  assert.ok(svg.includes('id="playback-play"'));
+  assert.ok(svg.includes('id="playback-pause"'));
 });
 
 test('timer can appear without captions and animation caches remain bounded', async () => {

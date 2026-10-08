@@ -24,8 +24,8 @@ async function runtime(options = {}) {
     system: { onSystemDidWakeUp: cb => callbacks.wake = cb }, logger: { info() {}, warn(value) { warnings.push(value); }, error(error) { errors.push(error); } }
   };
   for (const name of ['onWillAppear', 'onWillDisappear', 'onKeyDown', 'onDialRotate', 'onDialDown', 'onTouchTap']) sdk.actions[name] = cb => callbacks[name] = cb;
-  const timers = { setTimeout(cb) { const id = {}; timeouts.set(id, cb); return id; }, clearTimeout(id) { timeouts.delete(id); }, setInterval(cb, period) { const id = {}; intervals.set(id, { cb, period }); return id; }, clearInterval(id) { intervals.delete(id); } };
-  const artworkRenderer = { async render(image, title, artists, options) { return options.showText === false ? 'control:' + options.playbackState + '|' + (image || '') : 'caption:' + title.replace(/\s+/g, ' ') + '|' + artists + '|' + (image || ''); } };
+  const timers = { setTimeout(cb, delay) { const id = { delay }; timeouts.set(id, cb); return id; }, clearTimeout(id) { timeouts.delete(id); }, setInterval(cb, period) { const id = {}; intervals.set(id, { cb, period }); return id; }, clearInterval(id) { intervals.delete(id); } };
+  const artworkRenderer = { async render(image, title, artists, options) { const picture = options.showText === false ? image || 'plain-cover' : 'caption:' + title.replace(/\s+/g, ' ') + '|' + artists + '|' + (image || ''); return picture + (options.playbackFeedback ? '|feedback:' + options.playbackFeedback : ''); } };
   const api = createRuntime(sdk, { client, artwork: { async get() {} }, artworkRenderer, timers, ...options });
   await api.start();
   const select = action => { if (sdk.ui.action) callbacks.uiDisappear({ action: sdk.ui.action }); sdk.ui.action = action; if (action) callbacks.uiAppear({ action }); };
@@ -101,14 +101,14 @@ test('R11: pending artwork does not hold metadata polling and stale covers are d
   client.data = { ...client.data, state: 'playing', artUrl: 'https://i.scdn.co/old' }; await api.refresh(); await flush(); assert.equal(transport.states.at(-1), 1);
   client.data = { ...client.data, state: 'paused', title: 'New', artUrl: 'https://i.scdn.co/new' }; await api.refresh(); await flush(); assert.equal(transport.states.at(-1), 0); assert.equal(client.reads, 2);
   old.resolve('old-cover'); await flush(); assert.ok(!cover.images.includes('old-cover'));
-  current.resolve('new-cover'); await flush(); assert.equal(cover.images.at(-1), 'control:paused|new-cover');
+  current.resolve('new-cover'); await flush(); assert.equal(cover.images.at(-1), 'new-cover');
 });
 
 test('artwork checkbox and new profiles use the current cover without native title wrapping', async () => {
   const { api, client } = await runtime({ artwork: { async get() { return 'cover'; } } }); client.data = { ...client.data, title: 'Perfect', artists: 'Kaley, LYON', artUrl: 'https://i.scdn.co/cover' };
   const action = key(); const entry = { action, settings: {} }; api.visible.set(action.id, entry); await api.refresh(); await flush();
   assert.equal(action.images.at(-1), 'caption:Perfect|Kaley, LYON|cover'); assert.equal(action.titles.at(-1), '');
-  entry.settings.showText = false; await api.refresh(); assert.equal(action.images.at(-1), 'control:paused|cover');
+  entry.settings.showText = false; await api.refresh(); assert.equal(action.images.at(-1), 'cover');
 });
 
 test('a delayed render is discarded when its action disappears', async () => {
@@ -130,22 +130,96 @@ test('Favorite follows the saved track state and never confirms a failed change'
   await api.refresh(); assert.equal(action.states.at(-1), 0);
 });
 
-test('artwork remains an identifiable play/pause control when all optional overlays are hidden', async () => {
+test('artwork stays clear at rest and controls playback when all optional overlays are hidden', async () => {
   const { api, client, callbacks, intervals } = await runtime({ artwork: { async get() { return 'cover'; } } });
   const action = key();
   const settings = { showText: false, scrollText: false, showRemaining: false };
   api.visible.set(action.id, { action, settings });
   client.data = { ...client.data, state: 'paused', title: 'Track', artUrl: 'https://i.scdn.co/cover' };
   await api.refresh(); await flush();
-  assert.equal(action.images.at(-1), 'control:paused|cover');
+  assert.equal(action.images.at(-1), 'cover');
   assert.ok(![...intervals.values()].some(timer => timer.period === 100));
   callbacks.onKeyDown({ action, payload: { settings } }); await flush();
   assert.deepEqual(client.calls, [['play-pause']]);
   client.data.state = 'playing'; await api.refresh();
-  assert.equal(action.images.at(-1), 'control:playing|cover');
+  assert.equal(action.images.at(-1), 'cover|feedback:playing');
   client.snapshotError = new Error('offline'); await api.refresh();
   assert.equal(action.images.at(-1), 'imgs/music.png');
   assert.equal(action.titles.at(-1), 'Ouvrir\nSpotifast');
+});
+
+test('playback feedback waits for confirmation, fades, and restores hidden-overlay artwork without CLI reads', async () => {
+  let clock = 0;
+  const { api, client, timeouts, intervals } = await runtime({ now: () => clock, artworkRenderer: { async render(image, title, artists, options) { return JSON.stringify(options); } } });
+  const action = key(); api.visible.set(action.id, { action, settings: { showText: false, scrollText: false, showRemaining: false } });
+  client.data = { ...client.data, state: 'playing', title: 'Track' };
+  const frame = () => JSON.parse(action.images.at(-1));
+  await api.refresh(); assert.equal(frame().playbackFeedback, undefined);
+  await api.perform({ action }, ['play-pause']); await api.refresh();
+  assert.equal(frame().playbackFeedback, undefined, 'Command acceptance is not playback confirmation');
+  client.data.state = 'paused'; await api.refresh();
+  assert.equal(frame().playbackFeedback, 'paused'); assert.equal(frame().feedbackOpacity, 1);
+  assert.ok([...intervals.values()].some(timer => timer.period === 100));
+  const reads = client.reads;
+  clock = 900; await api.animate(); assert.equal(frame().feedbackOpacity, 0.5);
+  const [expiryId, expiry] = [...timeouts].find(([id]) => id.delay === 1000);
+  clock = 1000; timeouts.delete(expiryId); expiry(); await flush();
+  assert.equal(frame().playbackFeedback, undefined);
+  assert.equal(client.reads, reads, 'Restoring the artwork must not query the player');
+  assert.ok(![...intervals.values()].some(timer => timer.period === 100));
+  await api.perform({ action }, ['play-pause']); client.data.state = 'playing'; await api.refresh();
+  assert.equal(frame().playbackFeedback, 'playing');
+  expiry(); await flush(); assert.equal(frame().playbackFeedback, 'playing', 'An older expiry cannot clear newer feedback');
+  clock = 2000; await api.animate(); assert.equal(frame().playbackFeedback, undefined);
+  assert.ok(![...timeouts.keys()].some(id => id.delay === 1000));
+  api.stop(); assert.equal(timeouts.size, 0); assert.equal(intervals.size, 0);
+});
+
+test('external changes, failed commands, expired confirmations and configuration changes never show success feedback', async () => {
+  let clock = 0;
+  const { api, client } = await runtime({ now: () => clock, artworkRenderer: { async render(image, title, artists, options) { return JSON.stringify(options); } } });
+  const action = key(); api.visible.set(action.id, { action, settings: {} });
+  const frame = () => JSON.parse(action.images.at(-1));
+  client.data.title = 'Track'; await api.refresh();
+  client.data.state = 'playing'; await api.refresh(); assert.equal(frame().playbackFeedback, undefined);
+  client.runError = new Error('refused'); await api.perform({ action }, ['play-pause']);
+  assert.equal(action.alerts, 1); assert.equal(frame().playbackFeedback, undefined);
+  client.runError = undefined; await api.perform({ action }, ['play-pause']);
+  clock = 6000; client.data.state = 'paused'; await api.refresh(); assert.equal(frame().playbackFeedback, undefined);
+  const delayed = deferred(); client.run = () => delayed.promise;
+  const pending = api.perform({ action }, ['play-pause']); await flush();
+  client.data.state = 'playing'; await api.refresh(); assert.equal(frame().playbackFeedback, undefined);
+  api.configure({ language: 'en' }); delayed.resolve(); await pending; await api.refresh();
+  assert.equal(frame().playbackFeedback, undefined);
+  api.stop();
+});
+
+test('rapid presses, profile changes and new tracks cannot replay an old playback confirmation', async () => {
+  let clock = 0;
+  const { api, client, callbacks, timeouts } = await runtime({ now: () => clock, artworkRenderer: { async render(image, title, artists, options) { return JSON.stringify(options); } } });
+  const action = key(); api.visible.set(action.id, { action, settings: {} });
+  const frame = () => JSON.parse(action.images.at(-1));
+  client.data = { ...client.data, title: 'Track', state: 'playing' }; await api.refresh();
+  const first = deferred(), second = deferred(); let call = 0;
+  client.run = () => (++call === 1 ? first.promise : second.promise);
+  const oldPress = api.perform({ action }, ['play-pause']); await flush();
+  client.data.state = 'paused'; await api.refresh(); assert.equal(frame().playbackFeedback, undefined);
+  const recentPress = api.perform({ action }, ['play-pause']); await flush();
+  client.data.state = 'playing'; second.resolve(); await recentPress; await api.refresh();
+  assert.equal(frame().playbackFeedback, 'playing');
+  const expiry = [...timeouts].find(([id]) => id.delay === 1000)[1];
+  first.resolve(); await oldPress; await api.refresh(); assert.equal(frame().playbackFeedback, 'playing');
+  callbacks.onWillDisappear({ action });
+  assert.ok(![...timeouts.keys()].some(id => id.delay === 1000));
+  callbacks.onWillAppear({ action, payload: { settings: {} } }); await api.refresh();
+  expiry(); await flush(); assert.equal(frame().playbackFeedback, undefined);
+  client.run = async () => {};
+  await api.perform({ action }, ['play-pause']); client.data.state = 'paused'; await api.refresh();
+  assert.equal(frame().playbackFeedback, 'paused');
+  client.data.title = 'New track'; await api.refresh(); assert.equal(frame().playbackFeedback, undefined);
+  const late = deferred(); client.run = () => late.promise;
+  const stoppedPress = api.perform({ action }, ['play-pause']); await flush(); api.stop();
+  late.resolve(); await stoppedPress; assert.equal(timeouts.size, 0);
 });
 
 test('animation advances captions and countdown without extra CLI reads, and resets for a new track', async () => {

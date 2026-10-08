@@ -10,7 +10,7 @@ export function createRuntime(streamDeck, {
   const visible = new Map(), artworkRequests = new Map();
   let state, online = false, refreshing, refreshAgain = false, configured = false, configuration = 0;
   let lastError = '', uiSession = 0, uiRevision = 0, refreshTimer, interval;
-  let sampledAt = 0, animationInterval, animating, started = false;
+  let sampledAt = 0, animationInterval, animationPeriod, animating, started = false;
   let playbackRequest;
   let resolveConfigured;
   const ready = new Promise(resolve => { resolveConfigured = resolve; });
@@ -91,6 +91,7 @@ export function createRuntime(streamDeck, {
     if (!connected) {
       clearPlaybackFeedback(entry);
       entry.captionKey = undefined;
+      entry.scrolling = false;
       title = t('openButton');
       if (id === 'nowplaying') picture = 'imgs/music.png';
       feedback = { title: 'Spotifast', value: t('offline'), indicator: 0, icon: 'imgs/music.png' };
@@ -104,17 +105,24 @@ export function createRuntime(streamDeck, {
         picture = entry.artImage ?? 'imgs/music.png';
         const clock = now();
         const captionKey = JSON.stringify([snapshot.title, snapshot.artists, snapshot.album, snapshot.duration, snapshot.artUrl, settings.showText, settings.scrollText, settings.captionLayout]);
-        if (entry.captionKey !== captionKey) { entry.captionKey = captionKey; entry.captionStartedAt = clock; }
+        if (entry.captionKey !== captionKey) { entry.captionKey = captionKey; entry.captionStartedAt = clock; entry.lastAnimationAt = undefined; }
         const remainingMs = settings.showRemaining !== false ? remainingTime(snapshot, clock - sampledAt) : undefined;
         if (entry.playbackFeedback && (clock >= entry.playbackFeedback.until || entry.playbackFeedback.state !== snapshot.state || entry.playbackFeedback.track !== trackKey(snapshot))) clearPlaybackFeedback(entry);
         const playbackFeedback = entry.playbackFeedback;
-        picture = await artworkRenderer.render(entry.artImage, snapshot.title || t('noTrack'), snapshot.title ? snapshot.artists : '', {
+        const captionTitle = snapshot.title || t('noTrack'), captionArtists = snapshot.title ? snapshot.artists : '';
+        const options = {
           showText: settings.showText !== false, scrollText: settings.scrollText !== false,
           captionLayout: settings.captionLayout === 'twoLines' ? 'twoLines' : 'compact',
           elapsedMs: Math.max(0, clock - entry.captionStartedAt), remainingMs,
           playbackFeedback: playbackFeedback?.state,
           feedbackOpacity: playbackFeedback ? Math.min(1, Math.max(0, (playbackFeedback.until - clock) / 200)) : undefined
-        });
+        };
+        picture = await artworkRenderer.render(entry.artImage, captionTitle, captionArtists, options);
+        const scrolling = await artworkRenderer.hasScrollingText(captionTitle, captionArtists, options);
+        if (!current()) return;
+        entry.scrolling = scrolling;
+        entry.remainingMs = remainingMs;
+        entry.lastAnimationAt ??= clock;
       }
       if (['volumeup', 'volumedown', 'mute'].includes(id)) title = snapshot.volume === null ? '' : snapshot.volume + '%';
       if (id === 'volume') feedback = { title: shortText(snapshot.title || t('volumeTitle'), 24), value: snapshot.volume === null ? '—' : snapshot.volume + '%', indicator: snapshot.volume ?? 0, icon: entry.artImage ?? 'imgs/volumeup.png' };
@@ -134,18 +142,38 @@ export function createRuntime(streamDeck, {
     const results = await Promise.allSettled(entries.map(entry => render(entry, image, url)));
     for (const result of results) if (result.status === 'rejected') report(result.reason);
   }
-  const animatedEntry = entry => suffix(entry.action) === 'nowplaying' &&
-    (entry.playbackFeedback || (entry.settings.showText !== false && entry.settings.scrollText !== false) || entry.settings.showRemaining !== false);
+  function entryAnimationPeriod(entry, clock = now()) {
+    if (!started || !online || suffix(entry.action) !== 'nowplaying') return undefined;
+    // Render an expired badge once as well, in case its expiry callback was delayed.
+    if (entry.playbackFeedback) return 100;
+    if (entry.scrolling && entry.settings.showText !== false && entry.settings.scrollText !== false) return 100;
+    const elapsed = Math.max(0, clock - sampledAt);
+    const remaining = remainingTime(state, elapsed);
+    // Render the final value before a finished or stale countdown goes idle.
+    if (entry.settings.showRemaining !== false && state.state === 'playing' && remaining !== undefined &&
+      ((elapsed < 5000 && remaining > 0) || entry.remainingMs > remaining)) return 1000;
+    return undefined;
+  }
   function animate() {
     if (animating) return animating;
     if (!started || !online) return Promise.resolve();
-    animating = renderEntries([...visible.values()].filter(animatedEntry)).finally(() => { animating = undefined; updateAnimationTimer(); });
+    const clock = now();
+    const entries = [...visible.values()].filter(entry => {
+      const period = entryAnimationPeriod(entry, clock);
+      return period !== undefined && (entry.lastAnimationAt === undefined || clock - entry.lastAnimationAt >= period);
+    });
+    for (const entry of entries) entry.lastAnimationAt = clock;
+    animating = renderEntries(entries).finally(() => { animating = undefined; updateAnimationTimer(); });
     return animating;
   }
   function updateAnimationTimer() {
-    const enabled = started && online && [...visible.values()].some(animatedEntry);
-    if (enabled && animationInterval === undefined) animationInterval = timers.setInterval(() => animate().catch(report), 100);
-    if (!enabled && animationInterval !== undefined) { timers.clearInterval(animationInterval); animationInterval = undefined; }
+    const periods = [...visible.values()].map(entry => entryAnimationPeriod(entry)).filter(period => period !== undefined);
+    const period = periods.length ? Math.min(...periods) : undefined;
+    if (period === animationPeriod) return;
+    timers.clearInterval(animationInterval);
+    animationInterval = undefined;
+    animationPeriod = period;
+    if (period !== undefined) animationInterval = timers.setInterval(() => animate().catch(report), period);
   }
   function requestArtwork() {
     const url = online && state?.artUrl;
@@ -285,6 +313,6 @@ export function createRuntime(streamDeck, {
       await refresh();
       interval = timers.setInterval(() => refresh().catch(report), 1500);
     },
-    stop() { started = false; resetPlaybackFeedback(); timers.clearTimeout(refreshTimer); timers.clearInterval(interval); timers.clearInterval(animationInterval); animationInterval = undefined; }
+    stop() { started = false; resetPlaybackFeedback(); timers.clearTimeout(refreshTimer); timers.clearInterval(interval); timers.clearInterval(animationInterval); animationInterval = undefined; animationPeriod = undefined; }
   };
 }

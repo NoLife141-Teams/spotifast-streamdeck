@@ -2,10 +2,12 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import { createRuntime } from '../src/runtime.mjs';
+import { ArtworkRenderer } from '../src/artwork.mjs';
 import { UUID, LocalizedError } from '../src/core.mjs';
 
 export const deferred = () => { let resolve, reject; const promise = new Promise((ok, fail) => { resolve = ok; reject = fail; }); return { promise, resolve, reject }; };
 const flush = () => new Promise(resolve => setImmediate(resolve));
+const textMetrics = new ArtworkRenderer();
 function key(id = 'nowplaying', instance = id) {
   return { id: instance, manifestId: UUID + '.' + id, isKey: () => true, states: [], images: [], titles: [], alerts: 0,
     async setState(value) { this.states.push(value); }, async setImage(value) { this.images.push(value); }, async setTitle(value) { this.titles.push(value); }, async showAlert() { this.alerts++; } };
@@ -26,7 +28,9 @@ async function runtime(options = {}) {
   for (const name of ['onWillAppear', 'onWillDisappear', 'onKeyDown', 'onDialRotate', 'onDialDown', 'onTouchTap']) sdk.actions[name] = cb => callbacks[name] = cb;
   const timers = { setTimeout(cb, delay) { const id = { delay }; timeouts.set(id, cb); return id; }, clearTimeout(id) { timeouts.delete(id); }, setInterval(cb, period) { const id = {}; intervals.set(id, { cb, period }); return id; }, clearInterval(id) { intervals.delete(id); } };
   const artworkRenderer = { async render(image, title, artists, options) { const picture = options.showText === false ? image || 'plain-cover' : 'caption:' + title.replace(/\s+/g, ' ') + '|' + artists + '|' + (image || ''); return picture + (options.playbackFeedback ? '|feedback:' + options.playbackFeedback : ''); } };
-  const api = createRuntime(sdk, { client, artwork: { async get() {} }, artworkRenderer, timers, ...options });
+  const selectedRenderer = options.artworkRenderer ?? artworkRenderer;
+  if (!selectedRenderer.hasScrollingText) selectedRenderer.hasScrollingText = (...args) => textMetrics.hasScrollingText(...args);
+  const api = createRuntime(sdk, { client, artwork: { async get() {} }, timers, ...options, artworkRenderer: selectedRenderer });
   await api.start();
   const select = action => { if (sdk.ui.action) callbacks.uiDisappear({ action: sdk.ui.action }); sdk.ui.action = action; if (action) callbacks.uiAppear({ action }); };
   return { api, client, sdk, callbacks, messages, warnings, errors, select, timeouts, intervals };
@@ -313,7 +317,7 @@ test('artwork defaults to one line and resets scrolling when its layout changes'
   const frames = [];
   const { api, callbacks, client } = await runtime({ now: () => clock, artworkRenderer: { async render(image, title, artists, options) { frames.push(options); return JSON.stringify(options); } } });
   const action = key(); api.visible.set(action.id, { action, settings: {} });
-  client.data = { ...client.data, title: 'Track', artists: 'Artist' };
+  client.data = { ...client.data, title: 'A very long track title', artists: 'Artist' };
   await api.refresh(); assert.equal(frames.at(-1).captionLayout, 'compact');
   clock += 5000; await api.animate(); assert.equal(frames.at(-1).elapsedMs, 5000);
   callbacks.settings({ action, payload: { settings: { captionLayout: 'twoLines' } } });
@@ -326,10 +330,135 @@ test('artwork defaults to one line and resets scrolling when its layout changes'
 });
 
 test('slow animation frames are not queued and cannot overwrite a newer track', async () => {
-  const waiting = deferred(); let delayed = false;
-  const { api, client } = await runtime({ artworkRenderer: { render: (image, title) => delayed ? waiting.promise : Promise.resolve(title) } });
-  const action = key(); api.visible.set(action.id, { action, settings: {} }); client.data.title = 'Old'; await api.refresh();
-  delayed = true; const first = api.animate(); const second = api.animate(); assert.equal(first, second); await flush();
-  delayed = false; client.data.title = 'New'; await api.refresh(); waiting.resolve('Stale'); await first;
-  assert.equal(action.images.at(-1), 'New'); assert.ok(!action.images.includes('Stale')); api.stop();
+  const waiting = deferred(); let delayed = false, clock = 0;
+  const { api, client } = await runtime({ now: () => clock, artworkRenderer: { render: (image, title) => delayed ? waiting.promise : Promise.resolve(title) } });
+  const action = key(); api.visible.set(action.id, { action, settings: {} }); client.data.title = 'A very long old track title'; await api.refresh();
+  delayed = true; clock = 2000; const first = api.animate(); const second = api.animate(); assert.equal(first, second); await flush();
+  delayed = false; client.data.title = 'A very long new track title'; await api.refresh(); waiting.resolve('Stale'); await first;
+  assert.equal(action.images.at(-1), 'A very long new track title'); assert.ok(!action.images.includes('Stale')); api.stop();
+});
+
+test('short paused captions stay idle and a playing countdown runs once per second', async () => {
+  let clock = 0;
+  const frames = [];
+  const { api, client, intervals } = await runtime({ now: () => clock, artworkRenderer: { async render(image, title, artists, options) { frames.push(options); return JSON.stringify(options); } } });
+  const action = key(); api.visible.set(action.id, { action, settings: {} });
+  const periods = () => [...intervals.values()].filter(timer => timer.period !== 1500).map(timer => timer.period);
+  client.data = { ...client.data, state: 'paused', title: 'Hi', position: 10000, duration: 120000 };
+  await api.refresh(); assert.deepEqual(periods(), []);
+  const pausedFrames = frames.length;
+  clock = 2000; await api.animate(); assert.equal(frames.length, pausedFrames);
+  client.data.state = 'playing'; await api.refresh(); assert.deepEqual(periods(), [1000]);
+  const reads = client.reads, playingFrames = frames.length;
+  clock = 2500; await api.animate(); assert.equal(frames.length, playingFrames + 1);
+  // Even when invoked more often, a timer-only entry is throttled to one frame per second.
+  clock = 2900; await api.animate(); assert.equal(frames.length, playingFrames + 1);
+  clock = 3500; await api.animate(); assert.equal(frames.at(-1).remainingMs, 108500);
+  assert.equal(client.reads, reads);
+  client.data.state = 'paused'; await api.refresh(); assert.deepEqual(periods(), []);
+  api.stop(); assert.equal(intervals.size, 0);
+});
+
+test('layout, track and visibility changes enable only necessary scrolling', async () => {
+  const { api, client, callbacks, intervals } = await runtime();
+  const action = key();
+  const periods = () => [...intervals.values()].filter(timer => timer.period !== 1500).map(timer => timer.period);
+  client.data = { ...client.data, title: 'WWWW', artists: 'WWWW' };
+  callbacks.onWillAppear({ action, payload: { settings: { captionLayout: 'twoLines' } } }); await api.refresh();
+  assert.deepEqual(periods(), []);
+  callbacks.settings({ action, payload: { settings: { captionLayout: 'compact' } } }); await api.refresh();
+  assert.deepEqual(periods(), [100]);
+  callbacks.settings({ action, payload: { settings: { captionLayout: 'compact', scrollText: false } } }); await api.refresh();
+  assert.deepEqual(periods(), []);
+  callbacks.settings({ action, payload: { settings: { showText: false } } }); await api.refresh();
+  assert.deepEqual(periods(), []);
+  callbacks.settings({ action, payload: { settings: {} } }); await api.refresh(); assert.deepEqual(periods(), [100]);
+  client.data = { ...client.data, title: 'Hi', artists: '' }; await api.refresh(); assert.deepEqual(periods(), []);
+  client.data.title = 'A very long new track title'; await api.refresh(); assert.deepEqual(periods(), [100]);
+  callbacks.onWillDisappear({ action }); assert.deepEqual(periods(), []);
+  api.stop();
+});
+
+test('a scrolling key does not make a timer-only key render ten times per second', async () => {
+  let clock = 0;
+  const frames = [];
+  const { api, client, intervals } = await runtime({ now: () => clock, artworkRenderer: { async render(image, title, artists, options) { frames.push(options.showText); return JSON.stringify(options); } } });
+  const scroll = key('nowplaying', 'scroll'), timer = key('nowplaying', 'timer');
+  api.visible.set(scroll.id, { action: scroll, settings: { showRemaining: false } });
+  api.visible.set(timer.id, { action: timer, settings: { showText: false } });
+  client.data = { ...client.data, state: 'playing', title: 'An exceptionally long song title', duration: 120000, position: 0 };
+  await api.refresh(); frames.length = 0;
+  assert.equal([...intervals.values()].filter(item => item.period === 100).length, 1);
+  const reads = client.reads;
+  for (clock = 100; clock <= 1000; clock += 100) await api.animate();
+  assert.equal(frames.filter(showText => showText).length, 10);
+  assert.equal(frames.filter(showText => !showText).length, 1);
+  assert.equal(client.reads, reads);
+  api.stop();
+});
+
+test('unknown, finished and stale countdowns do not keep an animation loop alive', async () => {
+  let clock = 0;
+  const frames = [];
+  const { api, client, intervals } = await runtime({ now: () => clock, artworkRenderer: { async render(image, title, artists, options) { frames.push(options); return JSON.stringify(options); } } });
+  const action = key(); api.visible.set(action.id, { action, settings: { showText: false } });
+  const periods = () => [...intervals.values()].filter(timer => timer.period !== 1500).map(timer => timer.period);
+  for (const data of [{ state: 'playing', duration: 0, position: 0 }, { state: 'stopped', duration: 1000, position: 0 }, { state: 'playing', duration: 1000, position: 1000 }]) {
+    client.data = { ...client.data, ...data }; await api.refresh(); assert.deepEqual(periods(), []);
+  }
+  client.data = { ...client.data, state: 'playing', duration: 1000, position: 0 }; await api.refresh(); assert.deepEqual(periods(), [1000]);
+  clock = 1000; await api.animate(); assert.deepEqual(periods(), []); assert.equal(frames.at(-1).remainingMs, 0);
+  client.data.duration = 120000; await api.refresh(); assert.deepEqual(periods(), [1000]);
+  clock = 6000; await api.animate(); assert.deepEqual(periods(), []);
+  await api.refresh(); assert.deepEqual(periods(), [1000]);
+  client.snapshotError = new Error('offline'); await api.refresh(); assert.deepEqual(periods(), []);
+  api.stop();
+});
+
+test('a delayed snapshot lets countdowns render their final clamped value before going idle', async () => {
+  for (const [duration, expected] of [[4500, 0], [5000, 0], [120000, 115000]]) {
+    let clock = 0;
+    const frames = [], waiting = deferred();
+    const { api, client, intervals } = await runtime({ now: () => clock, artworkRenderer: { async render(image, title, artists, options) { frames.push(options.remainingMs); return String(options.remainingMs); } } });
+    const action = key(); api.visible.set(action.id, { action, settings: { showText: false } });
+    client.data = { ...client.data, state: 'playing', duration, position: 0 };
+    await api.refresh();
+    clock = 1000; await api.animate();
+    client.snapshot = () => waiting.promise;
+    clock = 1500; const polling = api.refresh();
+    for (clock = 2000; clock <= 5000; clock += 1000) await api.animate();
+    assert.equal(frames.at(-1), expected, `Countdown with ${duration} ms remaining must render its final value`);
+    assert.ok(![...intervals.values()].some(timer => timer.period !== 1500));
+    const count = frames.length;
+    clock = 7000; await api.animate(); assert.equal(frames.length, count);
+    waiting.resolve({ ...client.data, state: 'paused' }); await polling;
+    api.stop();
+  }
+});
+
+test('playback feedback temporarily accelerates a stationary artwork key', async () => {
+  let clock = 0;
+  const { api, client, timeouts, intervals } = await runtime({ now: () => clock });
+  const action = key(); api.visible.set(action.id, { action, settings: {} });
+  const periods = () => [...intervals.values()].filter(timer => timer.period !== 1500).map(timer => timer.period);
+  client.data = { ...client.data, title: 'Hi', state: 'paused', duration: 120000, position: 0 };
+  await api.refresh(); assert.deepEqual(periods(), []);
+  await api.perform({ action }, ['play-pause']); client.data.state = 'playing'; await api.refresh();
+  assert.deepEqual(periods(), [100]);
+  const [expiryId, expiry] = [...timeouts].find(([id]) => id.delay === 1000);
+  clock = 1000; timeouts.delete(expiryId); expiry(); await flush();
+  assert.deepEqual(periods(), [1000]);
+  client.data.state = 'paused'; await api.refresh(); assert.deepEqual(periods(), []);
+  api.stop();
+});
+
+test('delayed text measurement cannot restart animation after a key disappears', async () => {
+  const waiting = deferred();
+  const { api, callbacks, client, intervals } = await runtime({ artworkRenderer: { async render() { return 'cover'; }, hasScrollingText: () => waiting.promise } });
+  const action = key(); api.visible.set(action.id, { action, settings: {} }); client.data.title = 'Long title';
+  const pending = api.refresh(); await flush(); callbacks.onWillDisappear({ action });
+  waiting.resolve(true); await pending;
+  assert.ok(![...intervals.values()].some(timer => timer.period === 100));
+  assert.equal(action.images.length, 0);
+  api.stop();
 });

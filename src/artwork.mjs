@@ -125,11 +125,7 @@ export class ArtworkRenderer {
     this.fonts = Promise.resolve().then(loadFonts).catch(() => ({}));
     this.fallbackPath = fallbackPath;
   }
-  async render(cover, title, artists, options = {}) {
-    if (!cover) {
-      this.fallback ??= readFile(this.fallbackPath).then(bytes => 'data:image/png;base64,' + bytes.toString('base64')).catch(() => '');
-      cover = await this.fallback;
-    }
+  async layoutFor(title, artists, options = {}) {
     const fonts = await this.fonts;
     const layoutKey = JSON.stringify([title, artists, options.showText !== false, options.scrollText === true, options.captionLayout === 'compact']);
     let layout = this.layouts.get(layoutKey);
@@ -138,6 +134,19 @@ export class ArtworkRenderer {
       this.layouts.set(layoutKey, layout);
       while (this.layouts.size > 8) this.layouts.delete(this.layouts.keys().next().value);
     }
+    return { fonts, layoutKey, layout };
+  }
+  async hasScrollingText(title, artists, options = {}) {
+    if (options.showText === false || options.scrollText !== true) return false;
+    const { layout } = await this.layoutFor(title, artists, options);
+    return layout.compact ? layout.combined.width > TEXT_WIDTH : layout.track.width > TEXT_WIDTH || layout.artist.width > TEXT_WIDTH;
+  }
+  async render(cover, title, artists, options = {}) {
+    if (!cover) {
+      this.fallback ??= readFile(this.fallbackPath).then(bytes => 'data:image/png;base64,' + bytes.toString('base64')).catch(() => '');
+      cover = await this.fallback;
+    }
+    const { fonts, layoutKey, layout } = await this.layoutFor(title, artists, options);
     const key = JSON.stringify([cover, layoutKey, layout.showText ? scrollOffset((layout.combined ?? layout.track).width, options.elapsedMs) : 0, layout.showText && !layout.compact ? scrollOffset(layout.artist.width, options.elapsedMs) : 0, formatRemaining(options.remainingMs), options.playbackFeedback, Math.round((options.feedbackOpacity ?? 1) * 100) / 100]);
     if (this.cache.has(key)) return this.cache.get(key);
     const svg = renderCaption(cover, layout, fonts, options);

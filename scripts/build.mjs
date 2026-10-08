@@ -8,6 +8,7 @@ const output = path.join(root, 'build', 'rocks.spotifast.streamdeck.sdPlugin');
 await mkdir(path.join(output, 'bin'), { recursive: true });
 await cp(path.join(root, 'streamdeck/ui'), path.join(output, 'ui'), { recursive: true });
 await cp(path.join(root, 'streamdeck/imgs'), path.join(output, 'imgs'), { recursive: true });
+await cp(path.join(root, 'LICENSE'), path.join(output, 'LICENSE'));
 const manifest = JSON.parse(await readFile(path.join(root, 'streamdeck/manifest.json'), 'utf8'));
 manifest.Version = JSON.parse(await readFile(path.join(root, 'package.json'), 'utf8')).version + '.0';
 manifest.Author = 'NoLife141-Teams';

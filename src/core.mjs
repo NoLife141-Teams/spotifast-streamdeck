@@ -201,10 +201,6 @@ var ArtworkCache = class {
     this.maxBytes = maxBytes;
     this.now = now;
   }
-  isFresh(url, value) {
-    const cached = this.cache.get(url);
-    return !!value && cached?.value === value && cached.expires > this.now();
-  }
   remember(url, value) {
     const previous = this.cache.get(url);
     if (previous) { this.bytes -= previous.bytes; this.cache.delete(url); }
@@ -217,6 +213,11 @@ var ArtworkCache = class {
       this.bytes -= this.cache.get(oldest).bytes;
       this.cache.delete(oldest);
     }
+  }
+  isFresh(url, value) {
+    // Check the original deadline even when a key already holds this image.
+    const cached = this.cache.get(url);
+    return !!value && cached?.value === value && cached.expires > (this.now?.() ?? Date.now());
   }
   async get(url2) {
     if (!isArtworkUrl(url2)) return void 0;

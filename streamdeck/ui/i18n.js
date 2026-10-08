@@ -6,6 +6,8 @@
   const messages = {
     en: {
       language: 'Language', automatic: 'Follow Stream Deck', checking: 'Checking connection…',
+      commandQueueBusy: 'Too many commands are waiting. Try again.', commandExpired: 'This command waited too long. Try again.',
+      unsupportedMultiAction: 'This action cannot set an explicit state in a Multi Action.', connectionLost: 'Connection to Stream Deck was lost. Reopen these settings.',
       open: 'Open Spotifast', check: 'Check connection', playlistLabel: 'Playlist, album or track link',
       playlistHint: 'Copy a Spotify link or use a spotify:playlist:… URI.', volumeLabel: 'Volume step (%)',
       showText: 'Show the title and artist on the artwork', executableLabel: 'Spotifast location (optional)',
@@ -31,6 +33,8 @@
     },
     fr: {
       language: 'Langue', automatic: 'Suivre Stream Deck', checking: 'Vérification de la connexion…',
+      commandQueueBusy: 'Trop de commandes sont en attente. Réessaie.', commandExpired: 'Cette commande a attendu trop longtemps. Réessaie.',
+      unsupportedMultiAction: 'Cette action ne peut pas définir un état explicite dans une multi-action.', connectionLost: 'La connexion à Stream Deck est perdue. Rouvre ces réglages.',
       open: 'Ouvrir Spotifast', check: 'Vérifier la connexion', playlistLabel: 'Lien de playlist, album ou morceau',
       playlistHint: 'Copie un lien Spotify ou utilise une URI spotify:playlist:…', volumeLabel: 'Variation du volume (%)',
       showText: 'Afficher le titre et l’artiste sur la pochette', executableLabel: 'Emplacement de Spotifast (facultatif)',

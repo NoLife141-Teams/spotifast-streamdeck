@@ -1,87 +1,117 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import vm from 'node:vm';
 import { readFile } from 'node:fs/promises';
-import translations from '../streamdeck/ui/i18n.js';
-import { UUID, actions, shortText, commandFor } from '../src/core.mjs';
+import { createRuntime } from '../src/runtime.mjs';
+import { UUID, LocalizedError } from '../src/core.mjs';
 
-class TestRenderer { async render(image, title, artists) { return 'caption:' + title.replace(/\s+/g, ' ') + '|' + artists; } }
-async function runtime() {
-  const callbacks = {};
-  const messages = [];
-  const warnings = [];
-  class Client {
-    configure(p = '') { this.customPath = p; }
-    async snapshot() {
-      if (this.offline) throw new Error('not running');
-      return { state: 'paused', title: '', artists: '', volume: 50, repeat: 'off', saved: 'no', artUrl: '' };
-    }
-    async run() { if (this.offline) throw new Error('not running'); }
-    async open() {}
-  }
-  const sdk = {
-    info: { application: { language: 'en' } }, connect: async () => {},
-    settings: { getGlobalSettings: async () => ({ language: 'fr' }), onDidReceiveSettings: cb => { callbacks.settings = cb; }, onDidReceiveGlobalSettings: cb => { callbacks.global = cb; } },
-    ui: { onSendToPlugin: cb => { callbacks.ui = cb; }, sendToPropertyInspector: async value => { messages.push(value); } },
-    system: { onSystemDidWakeUp: cb => { callbacks.wake = cb; } },
-    logger: { info() {}, warn(value) { warnings.push(value); }, error(e) { throw e; } },
-    actions: {}
-  };
-  for (const name of ['onWillAppear','onWillDisappear','onKeyDown','onDialRotate','onDialDown','onTouchTap']) sdk.actions[name] = cb => { callbacks[name] = cb; };
-  const context = vm.createContext({ streamDeck: sdk, UUID, actions, Spotifast: Client, ArtworkCache: class { async get() {} }, shortText, commandFor, translations, ArtworkRenderer: TestRenderer, setInterval() {}, setTimeout() {} });
-  let source = (await readFile(new URL('../src/plugin.mjs', import.meta.url), 'utf8')).replace(/^import .*;$/gm, '');
-  source = source.replace('main().catch(report);', 'globalThis.ready = main();');
-  source += '\nglobalThis.api = {configure, render, refresh, performInvalid, client, visible};';
-  vm.runInContext(source, context);
-  await context.ready;
-  return { api: context.api, callbacks, messages, warnings };
+export const deferred = () => { let resolve, reject; const promise = new Promise((ok, fail) => { resolve = ok; reject = fail; }); return { promise, resolve, reject }; };
+const flush = () => new Promise(resolve => setImmediate(resolve));
+function key(id = 'nowplaying', instance = id) {
+  return { id: instance, manifestId: UUID + '.' + id, isKey: () => true, states: [], images: [], titles: [], alerts: 0,
+    async setState(value) { this.states.push(value); }, async setImage(value) { this.images.push(value); }, async setTitle(value) { this.titles.push(value); }, async showAlert() { this.alerts++; } };
 }
-test('runtime labels follow French/English and survive a language switch', async () => {
-  const { api } = await runtime();
-  const titles = [];
-  const images = [];
-  const action = { id: 'test', manifestId: UUID + '.nowplaying', isKey: () => true, setImage: async value => { images.push(value); }, setTitle: async value => { titles.push(value); } };
-  api.visible.set('test', { action, settings: {} });
-  await api.refresh();
-  assert.equal(images.at(-1), 'caption:Aucun morceau|');
-  assert.equal(titles.at(-1), '');
-  api.configure({ language: 'en' });
-  await api.refresh();
-  assert.equal(images.at(-1), 'caption:No track|');
-  assert.equal(titles.at(-1), '');
-  api.client.offline = true;
-  await api.refresh();
-  assert.equal(titles.at(-1), 'Open\nSpotifast');
-  api.configure({ language: 'fr' });
-  await api.refresh();
-  assert.equal(titles.at(-1), 'Ouvrir\nSpotifast');
-});
-test('runtime errors are translated and carry a stable key for the UI', async () => {
-  const { api, messages } = await runtime();
-  let alerts = 0;
-  const event = { action: { showAlert: async () => { alerts++; } } };
-  await api.performInvalid(event, { messageKey: 'invalidUri' });
-  assert.equal(alerts, 1);
-  assert.equal(messages.at(-1).messageKey, 'invalidUri');
-  assert.match(messages.at(-1).message, /Ajoute un lien/);
-  api.configure({ language: 'en' });
-  await api.performInvalid(event, { messageKey: 'invalidUri' });
-  assert.match(messages.at(-1).message, /Add a valid Spotify/);
+async function runtime(options = {}) {
+  const callbacks = {}, messages = [], warnings = [], errors = [], timeouts = new Map();
+  const client = { customPath: '', data: { state: 'paused', title: '', artists: '', volume: 50, repeat: 'off', shuffle: false, saved: 'no', artUrl: '' }, calls: [], reads: 0,
+    configure(p = '') { this.customPath = p; },
+    async snapshot() { this.reads++; if (this.snapshotError) throw this.snapshotError; return { ...this.data }; },
+    async run(args) { this.calls.push(args); if (this.runError) throw this.runError; },
+    async open() { this.opened = true; if (this.openError) throw this.openError; }
+  };
+  const sdk = { info: { application: { language: 'en' } }, connect: async () => {}, actions: {},
+    settings: { getGlobalSettings: async () => ({ language: 'fr' }), onDidReceiveSettings: cb => callbacks.settings = cb, onDidReceiveGlobalSettings: cb => callbacks.global = cb },
+    ui: { onDidAppear: cb => callbacks.uiAppear = cb, onDidDisappear: cb => callbacks.uiDisappear = cb, onSendToPlugin: cb => callbacks.ui = cb, sendToPropertyInspector: async value => { messages.push({ target: sdk.ui.action.id, ...value }); } },
+    system: { onSystemDidWakeUp: cb => callbacks.wake = cb }, logger: { info() {}, warn(value) { warnings.push(value); }, error(error) { errors.push(error); } }
+  };
+  for (const name of ['onWillAppear', 'onWillDisappear', 'onKeyDown', 'onDialRotate', 'onDialDown', 'onTouchTap']) sdk.actions[name] = cb => callbacks[name] = cb;
+  const timers = { setTimeout(cb) { const id = {}; timeouts.set(id, cb); return id; }, clearTimeout(id) { timeouts.delete(id); }, setInterval() {}, clearInterval() {} };
+  const artworkRenderer = { async render(image, title, artists) { return 'caption:' + title.replace(/\s+/g, ' ') + '|' + artists + '|' + (image || ''); } };
+  const api = createRuntime(sdk, { client, artwork: { async get() {} }, artworkRenderer, timers, ...options });
+  await api.start();
+  const select = action => { if (sdk.ui.action) callbacks.uiDisappear({ action: sdk.ui.action }); sdk.ui.action = action; if (action) callbacks.uiAppear({ action }); };
+  return { api, client, sdk, callbacks, messages, warnings, errors, select, timeouts };
+}
+
+test('labels follow English/French, including wake-up, without changing action settings', async () => {
+  const { api, client, callbacks } = await runtime(); const action = key(); api.visible.set(action.id, { action, settings: {} });
+  await api.refresh(); assert.equal(action.images.at(-1), 'caption:Aucun morceau||');
+  api.configure({ language: 'en' }); await api.refresh(); assert.equal(action.images.at(-1), 'caption:No track||');
+  api.configure({ language: 'fr' }); callbacks.wake(); await api.refresh(); assert.equal(action.images.at(-1), 'caption:Aucun morceau||');
+  client.snapshotError = new Error('not running'); await api.refresh(); assert.equal(action.titles.at(-1), 'Ouvrir\nSpotifast');
 });
 
-test('artwork caption clears the native title and can be hidden without losing the cover', async () => {
-  const { api } = await runtime();
-  api.client.snapshot = async () => ({ state: 'playing', title: 'Perfect', artists: 'Kaley, LYON', volume: 50, artUrl: '', repeat: 'off' });
-  const images = [];
-  const titles = [];
-  const action = { id: 'cover', manifestId: UUID + '.nowplaying', isKey: () => true, setImage: async value => { images.push(value); }, setTitle: async value => { titles.push(value); } };
-  const entry = { action, settings: {}, artImage: 'data:image/png;base64,cover', artUrl: '' };
-  api.visible.set(action.id, entry);
-  await api.refresh();
-  assert.equal(images.at(-1), 'caption:Perfect|Kaley, LYON');
-  assert.equal(titles.at(-1), '');
-  entry.settings.showText = false;
-  await api.refresh();
-  assert.equal(images.at(-1), 'data:image/png;base64,cover');
-  assert.equal(titles.at(-1), '');
+test('R01: a failed command invalidates and restores the actual key state', async () => {
+  const { api, client } = await runtime(); const action = key('playpause'); client.data.state = 'playing'; api.visible.set(action.id, { action, settings: {} });
+  await api.refresh(); assert.equal(action.states.at(-1), 1);
+  client.runError = new Error('refused'); await api.perform({ action }, ['play-pause']);
+  assert.equal(action.alerts, 1); assert.equal(action.states.at(-1), 1); assert.equal(action.states.length, 2);
+  const manifest = JSON.parse(await readFile(new URL('../streamdeck/manifest.json', import.meta.url), 'utf8'));
+  for (const item of manifest.Actions.filter(item => item.States.length > 1)) assert.equal(item.DisableAutomaticStates, true);
+});
+
+test('R01: successful commands with no state change also force a resync, using one timer', async () => {
+  const { api, client, timeouts } = await runtime(); const action = key('playpause'); api.visible.set(action.id, { action, settings: {} }); await api.refresh();
+  await api.perform({ action }, ['play-pause']); await api.perform({ action }, ['play-pause']);
+  assert.equal(timeouts.size, 1); await api.refresh(); assert.equal(action.states.length, 2); assert.equal(action.states.at(-1), 0);
+});
+
+test('R02: Multi Actions issue explicit commands and Favorite is excluded', async () => {
+  const { callbacks, client } = await runtime();
+  for (const [id, desired, expected] of [['playpause', 1, ['play']], ['playpause', 0, ['pause']], ['shuffle', 1, ['shuffle', 'on']], ['shuffle', 0, ['shuffle', 'off']], ['repeat', 1, ['repeat', 'context']], ['repeat', 0, ['repeat', 'off']]]) {
+    callbacks.onKeyDown({ action: key(id), payload: { settings: {}, isInMultiAction: true, userDesiredState: desired } }); await flush(); assert.deepEqual(client.calls.at(-1), expected);
+  }
+  const action = key('like'); callbacks.onKeyDown({ action, payload: { settings: {}, isInMultiAction: true, userDesiredState: 1 } }); await flush(); assert.equal(action.alerts, 1); assert.equal(client.calls.length, 6);
+  const manifest = JSON.parse(await readFile(new URL('../streamdeck/manifest.json', import.meta.url), 'utf8')); assert.equal(manifest.Actions.find(a => a.UUID.endsWith('.like')).SupportedInMultiActions, false);
+});
+
+test('R07: errors from another key never enter the currently selected inspector', async () => {
+  const { api, messages, select } = await runtime(); select(key('playlist', 'A'));
+  await api.performInvalid({ action: key('playlist', 'B') }, new LocalizedError('invalidUri')); assert.equal(messages.length, 0);
+  const action = key('playlist', 'A'); await api.performInvalid({ action }, new LocalizedError('invalidUri')); assert.equal(messages.length, 1); assert.equal(messages[0].target, 'A'); assert.match(messages[0].message, /Ajoute un lien/);
+});
+
+test('R07: delayed responses cannot cross a selection or a reopen of the same key', async () => {
+  const { api, client, messages, select } = await runtime(); const action = key('playlist', 'A'); select(action);
+  const old = deferred(); client.snapshot = () => old.promise; const pending = api.inspectorRequest({ action, payload: { type: 'status', requestId: 'old' } }); await flush();
+  select(key('playlist', 'B')); select(action); old.resolve({ ...client.data, title: 'Old' }); await pending; assert.equal(messages.length, 0);
+});
+
+test('R07: only the latest request for an inspector may display its result', async () => {
+  const { api, client, messages, select } = await runtime(); const action = key('playlist', 'A'); select(action); const old = deferred(), recent = deferred(); let index = 0;
+  client.snapshot = () => [old, recent][index++].promise;
+  const first = api.inspectorRequest({ action, payload: { type: 'status', requestId: 1 } }); await flush(); const second = api.inspectorRequest({ action, payload: { type: 'status', requestId: 2 } }); await flush();
+  recent.resolve({ ...client.data, title: 'Current' }); await second; old.resolve({ ...client.data, title: 'Old' }); await first;
+  assert.equal(messages.length, 1); assert.equal(messages[0].requestId, 2); assert.equal(messages[0].trackTitle, 'Current');
+});
+
+test('R08/R09: open failures and CLI failures report their real localized cause', async () => {
+  const { api, client, messages, select } = await runtime(); const action = key('open'); select(action);
+  client.openError = new LocalizedError('executableMissing'); await api.inspectorRequest({ action, payload: { type: 'open', requestId: 1 } });
+  assert.equal(messages.at(-1).messageKey, 'executableMissing'); assert.match(messages.at(-1).message, /introuvable/);
+  client.openError = undefined;
+  for (const [error, expected] of [[new LocalizedError('incompleteResponse'), 'incompleteResponse'], [Object.assign(new Error('timeout'), { killed: true }), 'commandTimeout'], [new Error('offline'), 'commandFailed']]) {
+    client.snapshotError = error; await api.inspectorRequest({ action, payload: { type: 'status', requestId: expected } }); assert.equal(messages.at(-1).messageKey, expected);
+  }
+  client.snapshotError = undefined; await api.inspectorRequest({ action, payload: { type: 'open', requestId: 3 } }); assert.equal(messages.at(-1).messageKey, 'connected'); assert.equal(messages.at(-1).requestId, 3);
+});
+
+test('R11: pending artwork does not hold metadata polling and stale covers are discarded', async () => {
+  const old = deferred(), current = deferred(); const { api, client } = await runtime({ artwork: { get: url => url.endsWith('/old') ? old.promise : current.promise } });
+  const cover = key(), transport = key('playpause'); api.visible.set(cover.id, { action: cover, settings: { showText: false } }); api.visible.set(transport.id, { action: transport, settings: {} });
+  client.data = { ...client.data, state: 'playing', artUrl: 'https://i.scdn.co/old' }; await api.refresh(); await flush(); assert.equal(transport.states.at(-1), 1);
+  client.data = { ...client.data, state: 'paused', title: 'New', artUrl: 'https://i.scdn.co/new' }; await api.refresh(); await flush(); assert.equal(transport.states.at(-1), 0); assert.equal(client.reads, 2);
+  old.resolve('old-cover'); await flush(); assert.ok(!cover.images.includes('old-cover'));
+  current.resolve('new-cover'); await flush(); assert.equal(cover.images.at(-1), 'new-cover');
+});
+
+test('artwork checkbox and new profiles use the current cover without native title wrapping', async () => {
+  const { api, client } = await runtime({ artwork: { async get() { return 'cover'; } } }); client.data = { ...client.data, title: 'Perfect', artists: 'Kaley, LYON', artUrl: 'https://i.scdn.co/cover' };
+  const action = key(); const entry = { action, settings: {} }; api.visible.set(action.id, entry); await api.refresh(); await flush();
+  assert.equal(action.images.at(-1), 'caption:Perfect|Kaley, LYON|cover'); assert.equal(action.titles.at(-1), '');
+  entry.settings.showText = false; await api.refresh(); assert.equal(action.images.at(-1), 'cover');
+});
+
+test('a delayed render is discarded when its action disappears', async () => {
+  const delayed = deferred(); const { api, callbacks } = await runtime({ artworkRenderer: { render: () => delayed.promise } }); const action = key(); api.visible.set(action.id, { action, settings: {} });
+  const pending = api.refresh(); await flush(); callbacks.onWillDisappear({ action }); delayed.resolve('old-image'); await pending; assert.equal(action.images.length, 0);
 });

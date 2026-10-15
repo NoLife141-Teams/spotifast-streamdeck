@@ -15,12 +15,12 @@
     "release:check": "node scripts/check-release.mjs"
   },
   "dependencies": {
-    "@elgato/streamdeck": "3.0.1",
+    "@elgato/streamdeck": "3.0.2",
     "opentype.js": "2.0.0",
     "sharp": "0.35.5"
   },
   "devDependencies": {
-    "@elgato/cli": "1.10.1",
+    "@elgato/cli": "1.10.2",
     "esbuild": "0.28.2"
   },
   "license": "MIT"

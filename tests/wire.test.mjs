@@ -67,6 +67,41 @@ test('real Elgato SDK routes macro states and inspector failures to their origin
     assert.equal(failure.payload.messageKey, 'executableMissing');
     assert.equal(failure.payload.online, false);
     assert.match(failure.payload.message, /introuvable/);
+    // The real SDK retains B when A disappears late, and retains B across
+    // overlapping appearances until all matching disappearances arrive.
+    send('willAppear', 'key-b', { controller: 'Keypad', coordinates: { column: 2, row: 0 }, settings: {}, isInMultiAction: false });
+    await waitFor(message => message.event === 'setState' && message.context === 'key-b');
+    for (const [requestId, disappearing] of [['stale-a', 'key-a'], ['overlapping-b', 'key-b']]) {
+      send('propertyInspectorDidAppear', 'key-b');
+      child.send({ armSnapshot: requestId });
+      await waitFor(message => message.armed === requestId);
+      send('sendToPlugin', 'key-b', { type: 'status', requestId });
+      await waitFor(message => message.blocked === requestId);
+      const since = messages.length;
+      send('propertyInspectorDidDisappear', disappearing);
+      const disappearance = await waitFor(message => messages.indexOf(message) >= since && message.disappeared === disappearing);
+      assert.equal(disappearance.current, 'key-b');
+      child.send({ releaseSnapshot: true });
+      const result = await waitFor(message => message.event === 'sendToPropertyInspector' && message.payload.requestId === requestId);
+      assert.equal(result.context, 'key-b');
+      assert.equal(result.payload.online, true);
+    }
+    child.send({ armSnapshot: 'closed-b' });
+    await waitFor(message => message.armed === 'closed-b');
+    send('sendToPlugin', 'key-b', { type: 'status', requestId: 'closed-b' });
+    await waitFor(message => message.blocked === 'closed-b');
+    const beforeClose = messages.length;
+    send('propertyInspectorDidDisappear', 'key-b');
+    const closed = await waitFor(message => messages.indexOf(message) >= beforeClose && message.disappeared === 'key-b');
+    assert.equal(closed.current, undefined);
+    const beforeReopen = messages.length;
+    send('propertyInspectorDidAppear', 'key-b');
+    await waitFor(message => messages.indexOf(message) >= beforeReopen && message.appeared === 'key-b');
+    child.send({ releaseSnapshot: true });
+    await waitFor(message => message.released === 'closed-b');
+    send('sendToPlugin', 'key-b', { type: 'status', requestId: 'reopened-b' });
+    await waitFor(message => message.event === 'sendToPropertyInspector' && message.payload.requestId === 'reopened-b');
+    assert.equal(messages.some(message => message.event === 'sendToPropertyInspector' && message.payload.requestId === 'closed-b'), false);
     assert.equal(messages.some(message => message.event === 'setGlobalSettings'), false);
   } finally {
     socket?.terminate();

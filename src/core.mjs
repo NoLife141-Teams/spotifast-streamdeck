@@ -157,8 +157,10 @@ var Spotifast = class {
     const volume = ['volume-up', 'volume-down'].includes(args[0]);
     const snapshot = args[0] === 'now-playing';
     const data = { args: [...args] };
-    // Playback changes retain input order; controls may still overtake volume and status.
-    const options = { data, priority: snapshot ? -10 : volume ? 0 : 20, maxWait: volume ? 2500 : 5000 };
+    // Mute reads/writes the volume state, so it shares the volume FIFO lane.
+    // Its distinct queue entry also prevents merging rotations across a mute.
+    // Playback controls can still overtake this lane and status reads.
+    const options = { data, priority: snapshot ? -10 : volume || args[0] === 'mute' ? 0 : 20, maxWait: volume ? 2500 : 5000 };
     if (volume) {
       options.key = args[0];
       data.parts = [{ amount: Number(args[1]), expires: this.queue.now() + options.maxWait }];

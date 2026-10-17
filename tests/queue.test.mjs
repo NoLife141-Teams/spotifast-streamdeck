@@ -143,3 +143,54 @@ test('a merged volume batch still expires when every input is stale', async () =
   now = 4901; gate.resolve(); await active; await rejected;
   assert.deepEqual(calls, [['next']]);
 });
+
+for (const commands of [
+  [['volume-up', '5'], ['mute']],
+  [['volume-down', '5'], ['mute']],
+  [['mute'], ['volume-up', '5']],
+  [['mute'], ['volume-up', '5'], ['mute']],
+  [['volume-up', '5'], ['volume-up', '5'], ['mute'], ['volume-up', '5'], ['volume-up', '5'], ['mute']]
+]) {
+  test('mute and volume retain input order: ' + JSON.stringify(commands), async () => {
+    const gate = deferred(), calls = [];
+    let volume = 50, beforeMute;
+    // Spotifast mute restores its saved volume; volume changes clear that saved value.
+    const apply = args => {
+      if (args[0] === 'mute') {
+        if (volume === 0) { volume = Math.max(5, beforeMute ?? 50); beforeMute = undefined; }
+        else { beforeMute = volume; volume = 0; }
+      } else {
+        volume = Math.max(0, Math.min(100, volume + (args[0] === 'volume-up' ? 1 : -1) * Number(args[1])));
+        beforeMute = undefined;
+      }
+    };
+    for (const args of commands) apply(args);
+    const expected = { volume, beforeMute };
+    volume = 50; beforeMute = undefined;
+    const instance = new Spotifast({ executeFile: async (_exe, args) => {
+      if (args[0] === 'now-playing') await gate.promise;
+      else { calls.push([...args]); apply(args); }
+      return { stdout: '' };
+    } });
+    instance.executable = async () => 'unused-test-helper.exe';
+    const active = instance.run(['now-playing', '--raw']); await flush();
+    const pending = commands.map(args => instance.run(args));
+    gate.resolve(); await Promise.all([active, ...pending]);
+    assert.deepEqual({ volume, beforeMute }, expected, JSON.stringify(calls));
+    const expectedCalls = [];
+    for (const args of commands) {
+      const last = expectedCalls.at(-1);
+      if (args[0].startsWith('volume-') && last?.[0] === args[0]) last[1] = String(Math.min(100, Number(last[1]) + Number(args[1])));
+      else expectedCalls.push([...args]);
+    }
+    assert.deepEqual(calls, expectedCalls, 'only adjacent same-direction volume changes may merge');
+  });
+}
+
+test('Pause still overtakes the ordered mute-volume lane', async () => {
+  const { instance, calls, gates } = client(); const gate = deferred(); gates.push(gate);
+  const active = instance.run(['now-playing', '--raw']); await flush();
+  const pending = [['volume-up', '5'], ['mute'], ['pause'], ['volume-up', '5']].map(args => instance.run(args));
+  gate.resolve(); await Promise.all([active, ...pending]);
+  assert.deepEqual(calls, [['now-playing', '--raw'], ['pause'], ['volume-up', '5'], ['mute'], ['volume-up', '5']]);
+});

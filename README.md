@@ -8,7 +8,7 @@ Independent Stream Deck controls for [Spotifast](https://spotifast.rocks/) on Wi
 
 Ce plugin contrôle Spotifast depuis un Stream Deck : lecture/pause, précédent/suivant, pochette et morceau, volume, sourdine, favoris, lecture aléatoire, répétition, ouverture de liens Spotify et contrôle par molette sur Stream Deck +.
 
-Il contrôle **Spotifast**, qui doit être installé, ouvert et connecté à Spotify. Ce n’est pas un contrôleur direct de l’application Spotify officielle.
+Il contrôle **Spotifast**, qui doit être installé et connecté à Spotify. Ce n’est pas un contrôleur direct de l’application Spotify officielle.
 
 ### Installation et utilisation
 
@@ -20,6 +20,8 @@ Il contrôle **Spotifast**, qui doit être installé, ouvert et connecté à Spo
 
 La fenêtre de réglages suit la langue de Stream Deck. Le choix **Langue → English / Français** change les réglages et les messages du plugin pour toutes les touches. Les noms de la liste d’actions suivent la langue de Stream Deck.
 
+Lorsque Spotifast est fermé, une touche affichant **Ouvrir Spotifast** lance l’application. Appuyez à nouveau une fois le lecteur disponible pour utiliser la commande habituelle. Les multi-actions conservent leurs commandes explicites.
+
 La détection automatique couvre l’installation Windows standard. Un emplacement personnalisé de `spotifast.exe` peut être indiqué dans les réglages.
 
 Les multi-actions peuvent définir explicitement Lecture/Pause avec la touche icône ou la touche avec pochette, Aléatoire activé/désactivé et Répétition désactivée/contexte. Relancer une multi-action Lecture ou Pause conserve l’état demandé. Sur une touche normale, les deux actions Lecture/Pause basculent toujours la lecture. Favori reste disponible comme touche, mais est exclu des multi-actions. Les commandes en attente sont limitées et les rotations proches dans le même sens sont regroupées.
@@ -27,6 +29,8 @@ Les multi-actions peuvent définir explicitement Lecture/Pause avec la touche ic
 Les lectures de statut sont espacées de 1,5 seconde après la fin de la lecture précédente, sans rattrapage si Spotifast ralentit. Après un échec, le plugin attend 3, 6, 15 puis 30 secondes entre les tentatives. Une commande, un changement de configuration ou un réveil relance la vérification sans attendre ce délai; après une commande réussie, le statut est vérifié après 250 ms. Les lectures CLI ont un délai d’exécution d’une seconde, les commandes d’écriture gardent cinq secondes et restent sérialisées. Aucune lecture automatique n’est lancée sans touche Spotifast visible.
 
 ### État de la version
+
+La version **0.2.6 bêta** fiabilise le démarrage de Spotifast depuis les touches hors ligne, conserve l’ordre des commandes de lecture et annule les téléchargements de pochettes devenus inutiles. Les changements de chemin de l’application et les rotations de volume en attente sont mieux pris en compte. Le démarrage à froid et les boutons ont été vérifiés sur un Stream Deck physique; les molettes Stream Deck + restent à vérifier. Les réglages et les identifiants des actions sont conservés.
 
 La version **0.2.5 bêta** réduit les calculs répétitifs du rendu, compacte les pochettes en 144 × 144 et espace les tentatives hors ligne. Les lectures d'état restent réactives et s'arrêtent sans touche visible. Le cache d'images est borné à huit entrées et 1 Mio; l'installateur inclut les bibliothèques natives nécessaires. Les trois améliorations sont validées ensemble par 96 tests sur Node 20 et 22. Les réglages et les identifiants des actions sont conservés.
 
@@ -50,7 +54,7 @@ Version 0.2.2 corrige les constats R01 à R13 : états des boutons synchronisés
 
 This plugin controls Spotifast from a Stream Deck: play/pause, previous/next, track and artwork, volume, mute, favorites, shuffle, repeat, Spotify links, and dial controls on Stream Deck +.
 
-It controls **Spotifast**, which must be installed, open and signed in to Spotify. It does not directly control the official Spotify desktop app.
+It controls **Spotifast**, which must be installed and signed in to Spotify. It does not directly control the official Spotify desktop app.
 
 ### Installation and use
 
@@ -62,6 +66,8 @@ It controls **Spotifast**, which must be installed, open and signed in to Spotif
 
 Settings follow the Stream Deck language. **Language → English / Français** changes the settings and runtime messages for all plugin buttons. Names in the action list follow the Stream Deck language.
 
+When Spotifast is closed, a key displaying **Open Spotifast** launches the application. Press again once the player is available to use the usual command. Multi Actions retain their explicit commands.
+
 Automatic detection supports the standard Windows installation. You can set a custom `spotifast.exe` location in the settings.
 
 Multi Actions can explicitly set Play/Pause with either the icon key or the artwork key, Shuffle on/off, and Repeat off/context. Repeating a Play or Pause Multi Action keeps the requested state. On a regular key, both Play/Pause actions still toggle playback. Favorite remains available as a key but is excluded from Multi Actions. Pending commands are bounded and nearby rotations in the same direction are combined.
@@ -69,6 +75,8 @@ Multi Actions can explicitly set Play/Pause with either the icon key or the artw
 Status reads wait 1.5 seconds after the previous read completes, without catch-up polling when Spotifast slows down. After failures, retries wait 3, 6, 15 and then 30 seconds. A command, configuration change or wake-up requests a fresh check without waiting for that delay; successful commands refresh status after 250 ms. Status CLI processes have a one-second execution timeout; writes retain five seconds and remain serialized. No automatic status reads run without a visible Spotifast action.
 
 ### Version status
+
+Version **0.2.6 beta** fixes launching Spotifast from offline keys, preserves playback command order and cancels artwork downloads that are no longer needed. Application-path changes and queued volume rotations are handled more reliably. Cold launch and buttons have been verified on physical Stream Deck hardware; Stream Deck + dials still need hardware testing. Existing settings and action identifiers are preserved.
 
 Version **0.2.5 beta** reduces repeated rendering work, compacts artwork to 144 × 144 and spaces out offline retries. Status reads stay responsive and stop when no key is visible. Encoded image storage is bounded to eight entries and 1 MiB; the installer includes the required native libraries. All three improvements are validated together by 96 tests on Node 20 and 22. Existing settings and action identifiers are preserved.
 
@@ -150,5 +158,5 @@ Pour publier une version, compiler, tester, valider et empaqueter le checkout du
 Before publishing, verify the release tag, matching versions, MIT license and clean checkout. CI also runs this check for version tags:
 
 ```sh
-npm run release:check -- v0.2.5
+npm run release:check -- v0.2.6
 ```

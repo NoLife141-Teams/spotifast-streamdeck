@@ -93,3 +93,53 @@ test('R02: explicit macro commands are idempotent and unsupported targets are re
   assert.throws(() => commandFor('playpause', {}, undefined, 2), e => e.messageKey === 'unknownAction');
   assert.throws(() => commandFor('like', {}, undefined, 1), e => e.messageKey === 'unsupportedMultiAction');
 });
+
+test('executable discovery cannot repopulate a cache from an obsolete configuration', async () => {
+  const { mkdtemp, writeFile, rm } = await import('node:fs/promises');
+  const { tmpdir } = await import('node:os');
+  const path = await import('node:path');
+  const directory = await mkdtemp(path.join(tmpdir(), 'spotifast-path-'));
+  try {
+    const oldPath = path.join(directory, 'old.exe'), newPath = path.join(directory, 'new.exe');
+    await writeFile(oldPath, ''); await writeFile(newPath, '');
+    const calls = [], instance = new Spotifast({ executeFile: async exe => { calls.push(exe); return { stdout: '' }; } });
+    instance.configure(oldPath);
+    const lookup = instance.executable();
+    instance.configure(newPath);
+    assert.equal(await lookup, newPath);
+    await instance.run(['pause']);
+    assert.deepEqual(calls, [newPath]);
+  } finally { await rm(directory, { recursive: true, force: true }); }
+});
+
+test('playlist and subsequent Pause retain input order behind an active status read', async () => {
+  const { instance, calls, gates } = client(); const gate = deferred(); gates.push(gate);
+  const status = instance.run(['now-playing', '--raw']); await flush();
+  const playlist = instance.run(['play-uri', 'spotify:playlist:Example']);
+  const pause = instance.run(['pause']); gate.resolve();
+  await Promise.all([status, playlist, pause]);
+  assert.deepEqual(calls, [['now-playing', '--raw'], ['play-uri', 'spotify:playlist:Example'], ['pause']]);
+});
+
+test('merged volume preserves fresh input without resurrecting expired input', async () => {
+  let now = 0;
+  const { instance, calls, gates } = client(new CommandQueue({ now: () => now }));
+  const gate = deferred(); gates.push(gate);
+  const active = instance.run(['next']); await flush();
+  const old = instance.run(['volume-up', '100']);
+  now = 2400; const fresh = instance.run(['volume-up', '5']);
+  now = 2501; gate.resolve(); await Promise.all([active, old, fresh]);
+  assert.deepEqual(calls, [['next'], ['volume-up', '5']]);
+});
+
+test('a merged volume batch still expires when every input is stale', async () => {
+  let now = 0;
+  const { instance, calls, gates } = client(new CommandQueue({ now: () => now }));
+  const gate = deferred(); gates.push(gate);
+  const active = instance.run(['next']); await flush();
+  const old = instance.run(['volume-up', '5']);
+  const rejected = assert.rejects(old, error => error.messageKey === 'commandExpired');
+  now = 2400; instance.run(['volume-up', '5']);
+  now = 4901; gate.resolve(); await active; await rejected;
+  assert.deepEqual(calls, [['next']]);
+});

@@ -624,3 +624,119 @@ test('delayed text measurement cannot restart animation after a key disappears',
   assert.equal(action.images.length, 0);
   api.stop();
 });
+
+test('current artwork supersedes old requests immediately and stop cancels remaining work', async () => {
+  const requests = [], canceled = [];
+  const { api, client, callbacks } = await runtime({ artwork: {
+    cancelExcept(url) { canceled.push(url); },
+    get(url) { const gate = deferred(); requests.push({ url, ...gate }); return gate.promise; }
+  } });
+  const action = key(); api.visible.set(action.id, { action, settings: {} });
+  for (let i = 0; i < 6; i++) {
+    client.data.artUrl = 'https://i.scdn.co/' + i;
+    await api.refresh(); await flush();
+  }
+  assert.equal(requests.length, 6, 'Old requests must not occupy the four-request limit');
+  assert.equal(api.artworkRequests.size, 1);
+  requests[0].resolve('old-cover'); await flush();
+  assert.equal(api.artworkRequests.size, 1);
+  assert.ok(!action.images.includes('old-cover'));
+  callbacks.onWillDisappear({ action });
+  assert.equal(canceled.at(-1), undefined);
+  assert.equal(api.artworkRequests.size, 0);
+  api.stop(); assert.equal(canceled.at(-1), undefined);
+  for (const request of requests) request.resolve();
+  await flush();
+});
+
+test('an obsolete A cover cannot overwrite a newer A request after an A-B-A track change', async () => {
+  const requests = [];
+  const { api, client } = await runtime({ artwork: {
+    cancelExcept() {},
+    get(url) { const gate = deferred(); requests.push({ url, ...gate }); return gate.promise; }
+  } });
+  const action = key(); api.visible.set(action.id, { action, settings: {} });
+  for (const name of ['A', 'B', 'A']) {
+    client.data.artUrl = 'https://i.scdn.co/' + name;
+    await api.refresh(); await flush();
+  }
+  requests[0].resolve('obsolete-A'); await flush();
+  assert.equal(api.artworkRequests.size, 1);
+  assert.ok(!action.images.some(image => image.includes('obsolete-A')));
+  requests[2].resolve('new-A'); await flush();
+  assert.ok(action.images.at(-1).includes('new-A'));
+  requests[1].resolve(); await flush(); api.stop();
+});
+
+test('offline ordinary keys labeled Open Spotifast launch before command validation', async () => {
+  for (const id of ['nowplaying', 'playpause', 'next', 'previous', 'volumeup', 'volumedown', 'mute', 'shuffle', 'repeat', 'like', 'playlist', 'open']) {
+    const { api, client, callbacks } = await runtime();
+    client.snapshotError = new Error('Spotifast is not running');
+    const action = key(id), settings = id === 'playlist' ? { uri: 'not a valid link' } : {};
+    callbacks.onWillAppear({ action, payload: { settings } });
+    await flush();
+    assert.equal(action.titles.at(-1), 'Ouvrir\nSpotifast', id);
+    callbacks.onKeyDown({ action, payload: { settings, isInMultiAction: false } });
+    await flush();
+    assert.equal(client.opened, true, id + ' must launch the app');
+    assert.deepEqual(client.calls, [], id + ' must not send a playback command');
+    assert.equal(action.alerts, 0, id);
+    api.stop();
+  }
+});
+
+test('online ordinary keys retain playback commands and playlist validation', async () => {
+  const { api, client, callbacks } = await runtime();
+  for (const [id, expected] of [['nowplaying', ['play-pause']], ['playpause', ['play-pause']], ['next', ['next']]]) {
+    const action = key(id);
+    callbacks.onWillAppear({ action, payload: { settings: {} } }); await flush();
+    callbacks.onKeyDown({ action, payload: { settings: {}, isInMultiAction: false } }); await flush();
+    assert.deepEqual(client.calls.at(-1), expected);
+  }
+  const action = key('playlist');
+  callbacks.onKeyDown({ action, payload: { settings: { uri: 'invalid' }, isInMultiAction: false } }); await flush();
+  assert.equal(action.alerts, 1);
+  assert.equal(client.calls.length, 3);
+  assert.equal(client.opened, undefined);
+  api.stop();
+});
+
+test('offline Multi Actions preserve explicit playback and validation instead of launching', async () => {
+  const { api, client, callbacks } = await runtime();
+  client.snapshotError = new Error('offline');
+  const action = key('nowplaying');
+  callbacks.onWillAppear({ action, payload: { settings: {} } }); await flush();
+  for (const desired of [1, 0]) {
+    callbacks.onKeyDown({ action, payload: { settings: {}, isInMultiAction: true, userDesiredState: desired } }); await flush();
+  }
+  assert.deepEqual(client.calls, [['play'], ['pause']]);
+  const playlist = key('playlist');
+  callbacks.onKeyDown({ action: playlist, payload: { settings: { uri: 'invalid' }, isInMultiAction: true } }); await flush();
+  assert.equal(playlist.alerts, 1);
+  assert.equal(client.opened, undefined);
+  api.stop();
+});
+
+test('offline dial rotation retains volume commands without launching', async () => {
+  const { api, client, callbacks } = await runtime();
+  client.snapshotError = new Error('offline');
+  const action = key('volume');
+  callbacks.onDialRotate({ action, payload: { settings: { step: 5 }, ticks: 2 } }); await flush();
+  assert.deepEqual(client.calls, [['volume-up', '10']]);
+  assert.equal(client.opened, undefined);
+  api.stop();
+});
+
+test('offline key launch failures alert and report the localized cause', async () => {
+  const { api, client, callbacks, messages, select } = await runtime();
+  client.snapshotError = new Error('offline');
+  client.openError = new LocalizedError('executableMissing');
+  const action = key('nowplaying'); select(action);
+  callbacks.onWillAppear({ action, payload: { settings: {} } }); await flush();
+  callbacks.onKeyDown({ action, payload: { settings: {}, isInMultiAction: false } }); await flush();
+  assert.equal(client.opened, true);
+  assert.deepEqual(client.calls, []);
+  assert.equal(action.alerts, 1);
+  assert.equal(messages.at(-1).messageKey, 'executableMissing');
+  api.stop();
+});

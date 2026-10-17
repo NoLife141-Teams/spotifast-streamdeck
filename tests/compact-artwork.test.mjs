@@ -104,3 +104,31 @@ test('packaged native decoder works outside the repository without its node_modu
     await rm(directory, { recursive: true, force: true });
   }
 });
+
+test('obsolete downloads abort without negative caching and rapid return to the same URL is safe', async () => {
+  const requests = [];
+  const bytes = await sharp(source).png().toBuffer();
+  const cache = new ArtworkCache((uri, { signal }) => new Promise((resolve, reject) => {
+    requests.push({ uri, signal, resolve, reject });
+    signal.addEventListener('abort', () => reject(signal.reason), { once: true });
+  }));
+  const first = cache.get(url(1));
+  cache.cancelExcept(url(2));
+  assert.equal(requests[0].signal.aborted, true);
+  const replacement = cache.get(url(1));
+  await first;
+  assert.equal(cache.cache.has(url(1)), false, 'Cancellation must not poison retries for thirty seconds');
+  assert.equal(cache.pending.size, 1, 'The old completion must not delete the replacement request');
+  requests[1].resolve(response(bytes));
+  assert.ok(await replacement);
+  assert.equal(cache.pending.size, 0); assert.equal(cache.controllers.size, 0);
+});
+
+test('cancellation after download skips decoding and does not cache failure', async () => {
+  let release;
+  const cache = new ArtworkCache(() => new Promise(resolve => { release = resolve; }));
+  const pending = cache.get(url(1)); cache.cancelExcept();
+  release(response(Buffer.from('deliberately invalid image')));
+  assert.equal(await pending, undefined);
+  assert.equal(cache.cache.size, 0);
+});

@@ -181,12 +181,19 @@ export function createRuntime(streamDeck, {
     if (period !== undefined) animationInterval = timers.setInterval(() => animate().catch(report), period);
   }
   function requestArtwork() {
-    const url = online && state?.artUrl;
+    const url = started && online && [...visible.values()].some(entry => ['nowplaying', 'volume'].includes(suffix(entry.action))) ? state?.artUrl : undefined;
+    if (artwork.cancelExcept) {
+      artwork.cancelExcept(url);
+      for (const pendingUrl of artworkRequests.keys()) if (pendingUrl !== url) artworkRequests.delete(pendingUrl);
+    }
     const needsArtwork = entry => ['nowplaying', 'volume'].includes(suffix(entry.action)) &&
       (entry.artUrl !== url || !entry.artImage || (artwork.isFresh ? !artwork.isFresh(url, entry.artImage) : now() - entry.artSampledAt >= 36e5));
     if (!url || artworkRequests.has(url) || artworkRequests.size >= 4 || ![...visible.values()].some(needsArtwork)) return;
-    const task = Promise.resolve().then(() => artwork.get(url)).then(async image => {
-      if (!image || !online || state?.artUrl !== url) return;
+    const task = Promise.resolve().then(() => {
+      if (!started || !online || state?.artUrl !== url || artworkRequests.get(url) !== task) return;
+      return artwork.get(url);
+    }).then(async image => {
+      if (!image || !started || !online || state?.artUrl !== url || artworkRequests.get(url) !== task) return;
       const changed = [];
       for (const entry of visible.values()) {
         if (!['nowplaying', 'volume'].includes(suffix(entry.action))) continue;
@@ -194,7 +201,7 @@ export function createRuntime(streamDeck, {
         else entry.artSampledAt = now();
       }
       await renderEntries(changed, image, url);
-    }).catch(report).finally(() => artworkRequests.delete(url));
+    }).catch(report).finally(() => { if (artworkRequests.get(url) === task) artworkRequests.delete(url); });
     artworkRequests.set(url, task);
   }
   function resetPolling() {
@@ -257,7 +264,7 @@ export function createRuntime(streamDeck, {
     await sendStatus(token, statusPayload(false, userError(error)));
     await refresh();
   }
-  async function perform(event, args) {
+  async function perform(event, args, launch = false) {
     const token = inspectorToken(event.action);
     let request;
     try {
@@ -273,7 +280,7 @@ export function createRuntime(streamDeck, {
         updateAnimationTimer();
         renderEntries(request.entries).catch(report);
       }
-      if (suffix(event.action) === 'open') await client.open();
+      if (launch || suffix(event.action) === 'open') await client.open();
       else await client.run(args);
       if (!started) return;
       if (request && playbackRequest === request) { request.accepted = true; request.until = now() + 5000; }
@@ -312,6 +319,7 @@ export function createRuntime(streamDeck, {
     const entry = visible.get(event.action.id); if (entry) invalidate(entry);
     if (entry) clearPlaybackFeedback(entry);
     visible.delete(event.action.id);
+    requestArtwork();
     if (!visible.size) resetPolling();
     updateAnimationTimer();
   });
@@ -329,6 +337,12 @@ export function createRuntime(streamDeck, {
   });
   streamDeck.settings.onDidReceiveGlobalSettings(event => { configure(event.settings); refresh().catch(report); });
   streamDeck.actions.onKeyDown(event => {
+    // Offline keys display Open Spotifast, regardless of their usual action.
+    // Honor that label before validating playlist settings; macros keep their commands.
+    if (!online && !event.payload.isInMultiAction) {
+      perform(event, undefined, true).catch(report);
+      return;
+    }
     try {
       const args = commandFor(suffix(event.action), event.payload.settings, undefined, event.payload.isInMultiAction ? event.payload.userDesiredState : undefined);
       perform(event, args).catch(report);
@@ -359,6 +373,6 @@ export function createRuntime(streamDeck, {
       streamDeck.logger.info(t('started', { count: actions.length }));
       await refresh();
     },
-    stop() { started = false; resetPolling(); resetPlaybackFeedback(); timers.clearInterval(animationInterval); animationInterval = undefined; animationPeriod = undefined; }
+    stop() { started = false; requestArtwork(); resetPolling(); resetPlaybackFeedback(); timers.clearInterval(animationInterval); animationInterval = undefined; animationPeriod = undefined; }
   };
 }

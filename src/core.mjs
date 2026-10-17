@@ -73,12 +73,13 @@ var CommandQueue = class {
     this.now = now;
     this.maxPending = maxPending;
   }
-  run(job, { key, priority = 0, maxWait = 5000, data, merge, dedupe = false } = {}) {
+  run(job, { key, priority = 0, maxWait = 5000, data, merge, renewOnMerge = false, dedupe = false } = {}) {
     const duplicate = dedupe && [this.active, ...this.pending].find(task => task?.key === key);
     if (duplicate) return duplicate.promise;
     const previous = this.pending.at(-1);
     if (merge && previous?.key === key && this.now() <= previous.expires) {
       merge(previous.data, data);
+      if (renewOnMerge) previous.expires = this.now() + maxWait;
       return previous.promise;
     }
     if (this.pending.length >= this.maxPending) {
@@ -118,18 +119,22 @@ var execute = promisify(execFile);
 var Spotifast = class {
   customPath = "";
   cachedPath;
-  constructor({ queue = new CommandQueue(), executeFile = execute } = {}) {
+  configuration = 0;
+  constructor({ queue = new CommandQueue(), executeFile = execute, spawnFile = spawn } = {}) {
     this.queue = queue;
     this.executeFile = executeFile;
+    this.spawnFile = spawnFile;
   }
   configure(customPath = "") {
     const next = String(customPath).trim();
     if (this.customPath !== next) this.queue.cancelPending();
     this.customPath = next;
     this.cachedPath = void 0;
+    this.configuration++;
   }
   async executable() {
     if (this.cachedPath) return this.cachedPath;
+    const configuration = this.configuration;
     const candidates = this.customPath ? [this.customPath] : [
       path.join(process.env.LOCALAPPDATA ?? "", "Programs", "Spotifast", "spotifast.exe"),
       path.join(process.env.ProgramFiles ?? "C:\\Program Files", "Spotifast", "spotifast.exe"),
@@ -139,26 +144,40 @@ var Spotifast = class {
       if (!path.isAbsolute(candidate) || !candidate.toLowerCase().endsWith(".exe")) continue;
       try {
         await access(candidate);
+        if (configuration !== this.configuration) return this.executable();
         this.cachedPath = candidate;
         return candidate;
       } catch {
       }
     }
+    if (configuration !== this.configuration) return this.executable();
     throw new LocalizedError("executableMissing");
   }
   run(args) {
     const volume = ['volume-up', 'volume-down'].includes(args[0]);
     const snapshot = args[0] === 'now-playing';
     const data = { args: [...args] };
-    const transport = ['play', 'pause', 'play-pause', 'mute', 'show'].includes(args[0]);
-    const options = { data, priority: snapshot ? -10 : volume ? 0 : transport ? 20 : 10, maxWait: volume ? 2500 : 5000 };
+    // Playback changes retain input order; controls may still overtake volume and status.
+    const options = { data, priority: snapshot ? -10 : volume ? 0 : 20, maxWait: volume ? 2500 : 5000 };
     if (volume) {
       options.key = args[0];
-      options.merge = (previous, next) => { previous.args[1] = String(Math.min(100, Number(previous.args[1]) + Number(next.args[1]))); };
+      data.parts = [{ amount: Number(args[1]), expires: this.queue.now() + options.maxWait }];
+      options.renewOnMerge = true;
+      options.merge = (previous, next) => {
+        previous.parts = previous.parts.filter(part => part.expires >= this.queue.now());
+        const last = previous.parts.at(-1), incoming = next.parts[0];
+        if (last?.expires === incoming.expires) last.amount = Math.min(100, last.amount + incoming.amount);
+        else previous.parts.push(incoming);
+      };
     }
     if (snapshot) { options.key = 'snapshot'; options.dedupe = true; }
-    return this.queue.run(async ({ args: queuedArgs }) => {
+    return this.queue.run(async ({ args: queuedArgs, parts }) => {
       const exe = await this.executable();
+      if (parts) {
+        const fresh = parts.filter(part => part.expires >= this.queue.now());
+        if (!fresh.length) throw new LocalizedError('commandExpired');
+        queuedArgs[1] = String(Math.min(100, fresh.reduce((sum, part) => sum + part.amount, 0)));
+      }
       // Only the short-lived status CLI gets the smaller budget; writes stay serialized.
       const { stdout } = await this.executeFile(exe, queuedArgs, { windowsHide: true, timeout: snapshot ? 1000 : 5000, maxBuffer: 1024 * 1024, encoding: "utf8", shell: false });
       return stdout;
@@ -167,20 +186,22 @@ var Spotifast = class {
   async snapshot() {
     return parseNowPlaying(await this.run(["now-playing", "--raw"]));
   }
-  async open() {
-    try {
-      await this.run(["show"]);
-    } catch {
+  open() {
+    return this.queue.run(async () => {
       const exe = await this.executable();
+      // A bare launch starts the app, or surfaces its existing instance. Do not
+      // run the GUI through execFile: its timeout would kill a cold launch.
       await new Promise((resolve, reject) => {
-        const child = spawn(exe, [], { detached: true, stdio: "ignore", windowsHide: true, shell: false });
+        const child = this.spawnFile(exe, [], {
+          cwd: path.dirname(exe), detached: true, stdio: "ignore", windowsHide: false, shell: false
+        });
         child.once("error", reject);
         child.once("spawn", () => {
           child.unref();
           resolve();
         });
       });
-    }
+    }, { key: 'open', priority: 20, dedupe: true });
   }
 };
 function isArtworkUrl(value) {
@@ -194,6 +215,7 @@ function isArtworkUrl(value) {
 var ArtworkCache = class {
   cache = /* @__PURE__ */ new Map();
   pending = new Map();
+  controllers = new Map();
   bytes = 0;
   constructor(fetcher = fetch, { maxEntries = 8, maxBytes = 1024 * 1024, now = Date.now } = {}) {
     if (!Number.isSafeInteger(maxEntries) || maxEntries < 0 || !Number.isSafeInteger(maxBytes) || maxBytes < 0) throw new RangeError('Invalid artwork cache budget');
@@ -220,14 +242,27 @@ var ArtworkCache = class {
     const cached2 = this.cache.get(url2);
     if (cached2 && cached2.expires > this.now()) return cached2.value;
     if (this.pending.has(url2)) return this.pending.get(url2);
-    const task = this.load(url2).finally(() => this.pending.delete(url2));
+    const controller = new AbortController();
+    const task = this.load(url2, controller.signal).finally(() => {
+      if (this.pending.get(url2) === task) { this.pending.delete(url2); this.controllers.delete(url2); }
+    });
+    this.controllers.set(url2, controller);
     this.pending.set(url2, task);
     return task;
   }
-  async load(url2) {
+  cancelExcept(url) {
+    for (const [pendingUrl, controller] of this.controllers) {
+      if (pendingUrl === url) continue;
+      controller.abort();
+      this.controllers.delete(pendingUrl);
+      this.pending.delete(pendingUrl);
+    }
+  }
+  async load(url2, cancellation = new AbortController().signal) {
     let value;
     try {
-      const response = await this.fetcher(url2, { signal: AbortSignal.timeout(4e3), redirect: "error" });
+      const response = await this.fetcher(url2, { signal: AbortSignal.any([cancellation, AbortSignal.timeout(4e3)]), redirect: "error" });
+      cancellation.throwIfAborted();
       if (!response.ok || !response.body) throw new LocalizedError("artworkUnavailable");
       const type = (response.headers.get("content-type") ?? "").split(";")[0];
       if (!["image/jpeg", "image/png", "image/webp"].includes(type)) throw new LocalizedError("artworkFormat");
@@ -244,10 +279,13 @@ var ArtworkCache = class {
         }
         chunks.push(part.value);
       }
+      cancellation.throwIfAborted();
       const compact = await compactArtwork(Buffer.concat(chunks), type);
       value = `data:${compact.contentType};base64,${compact.bytes.toString("base64")}`;
     } catch {
     }
+    // A cancelled request is not an artwork failure and must remain immediately retryable.
+    if (cancellation.aborted) return undefined;
     this.remember(url2, value);
     return value;
   }

@@ -30,6 +30,8 @@ Les lectures de statut sont espacées de 1,5 seconde après la fin de la lecture
 
 ### État de la version
 
+La version **0.2.7 bêta** conserve l’ordre des commandes de sourdine et de volume, réduit les calculs de rendu des longues légendes et évite ceux des légendes masquées. Les réglages restent réactifs lors des changements rapides de touche. Les correctifs passent 130 tests automatisés sur Windows avec Node 20 et 22. Aucun nouveau test sur matériel physique n’a été réalisé pour ces correctifs; les molettes Stream Deck + restent à tester. Les réglages et les identifiants des actions sont conservés.
+
 La version **0.2.6 bêta** fiabilise le démarrage de Spotifast depuis les touches hors ligne, conserve l’ordre des commandes de lecture et annule les téléchargements de pochettes devenus inutiles. Les changements de chemin de l’application et les rotations de volume en attente sont mieux pris en compte. Le démarrage à froid et les boutons ont été vérifiés sur un Stream Deck physique; les molettes Stream Deck + restent à vérifier. Les réglages et les identifiants des actions sont conservés.
 
 La version **0.2.5 bêta** réduit les calculs répétitifs du rendu, compacte les pochettes en 144 × 144 et espace les tentatives hors ligne. Les lectures d'état restent réactives et s'arrêtent sans touche visible. Le cache d'images est borné à huit entrées et 1 Mio; l'installateur inclut les bibliothèques natives nécessaires. Les trois améliorations sont validées ensemble par 96 tests sur Node 20 et 22. Les réglages et les identifiants des actions sont conservés.
@@ -75,6 +77,8 @@ Multi Actions can explicitly set Play/Pause with either the icon key or the artw
 Status reads wait 1.5 seconds after the previous read completes, without catch-up polling when Spotifast slows down. After failures, retries wait 3, 6, 15 and then 30 seconds. A command, configuration change or wake-up requests a fresh check without waiting for that delay; successful commands refresh status after 250 ms. Status CLI processes have a one-second execution timeout; writes retain five seconds and remain serialized. No automatic status reads run without a visible Spotifast action.
 
 ### Version status
+
+Version **0.2.7 beta** preserves mute and volume command order, reduces rendering work for long captions and skips hidden-caption shaping. Settings remain responsive during rapid key selection changes. The fixes pass 130 automated tests on Windows with Node 20 and 22. These fixes have not received new physical-device testing; Stream Deck + dials still need hardware testing. Existing settings and action identifiers are preserved.
 
 Version **0.2.6 beta** fixes launching Spotifast from offline keys, preserves playback command order and cancels artwork downloads that are no longer needed. Application-path changes and queued volume rotations are handled more reliably. Cold launch and buttons have been verified on physical Stream Deck hardware; Stream Deck + dials still need hardware testing. Existing settings and action identifiers are preserved.
 
@@ -158,5 +162,5 @@ Pour publier une version, compiler, tester, valider et empaqueter le checkout du
 Before publishing, verify the release tag, matching versions, MIT license and clean checkout. CI also runs this check for version tags:
 
 ```sh
-npm run release:check -- v0.2.6
+npm run release:check -- v0.2.7
 ```

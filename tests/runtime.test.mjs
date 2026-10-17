@@ -624,3 +624,46 @@ test('delayed text measurement cannot restart animation after a key disappears',
   assert.equal(action.images.length, 0);
   api.stop();
 });
+
+test('current artwork supersedes old requests immediately and stop cancels remaining work', async () => {
+  const requests = [], canceled = [];
+  const { api, client, callbacks } = await runtime({ artwork: {
+    cancelExcept(url) { canceled.push(url); },
+    get(url) { const gate = deferred(); requests.push({ url, ...gate }); return gate.promise; }
+  } });
+  const action = key(); api.visible.set(action.id, { action, settings: {} });
+  for (let i = 0; i < 6; i++) {
+    client.data.artUrl = 'https://i.scdn.co/' + i;
+    await api.refresh(); await flush();
+  }
+  assert.equal(requests.length, 6, 'Old requests must not occupy the four-request limit');
+  assert.equal(api.artworkRequests.size, 1);
+  requests[0].resolve('old-cover'); await flush();
+  assert.equal(api.artworkRequests.size, 1);
+  assert.ok(!action.images.includes('old-cover'));
+  callbacks.onWillDisappear({ action });
+  assert.equal(canceled.at(-1), undefined);
+  assert.equal(api.artworkRequests.size, 0);
+  api.stop(); assert.equal(canceled.at(-1), undefined);
+  for (const request of requests) request.resolve();
+  await flush();
+});
+
+test('an obsolete A cover cannot overwrite a newer A request after an A-B-A track change', async () => {
+  const requests = [];
+  const { api, client } = await runtime({ artwork: {
+    cancelExcept() {},
+    get(url) { const gate = deferred(); requests.push({ url, ...gate }); return gate.promise; }
+  } });
+  const action = key(); api.visible.set(action.id, { action, settings: {} });
+  for (const name of ['A', 'B', 'A']) {
+    client.data.artUrl = 'https://i.scdn.co/' + name;
+    await api.refresh(); await flush();
+  }
+  requests[0].resolve('obsolete-A'); await flush();
+  assert.equal(api.artworkRequests.size, 1);
+  assert.ok(!action.images.some(image => image.includes('obsolete-A')));
+  requests[2].resolve('new-A'); await flush();
+  assert.ok(action.images.at(-1).includes('new-A'));
+  requests[1].resolve(); await flush(); api.stop();
+});

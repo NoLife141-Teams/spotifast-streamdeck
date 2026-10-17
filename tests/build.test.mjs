@@ -17,7 +17,11 @@ test('R12/R05: rebuilding removes obsolete output and preserves the release lice
     await assert.rejects(access(path.join(output, 'ui/obsolete.txt')), error => error.code === 'ENOENT'); assert.equal(await readFile(sibling, 'utf8'), 'preserve');
     assert.equal(await readFile(path.join(output, 'LICENSE'), 'utf8'), await readFile(path.join(fixture, 'LICENSE'), 'utf8'));
     const metadata = JSON.parse(await readFile(path.join(fixture, 'package.json'), 'utf8')); const manifest = JSON.parse(await readFile(path.join(output, 'manifest.json'), 'utf8')); assert.equal(manifest.Version, metadata.version + '.0');
-    const notices = await readFile(path.join(output, 'THIRD_PARTY_NOTICES.txt'), 'utf8'); assert.match(notices, /@elgato\/schemas 0\.5\.1/);
+    const notices = await readFile(path.join(output, 'THIRD_PARTY_NOTICES.txt'), 'utf8');
+    const lock = JSON.parse(await readFile(path.join(root, 'package-lock.json'), 'utf8'));
+    const schemasVersion = lock.packages['node_modules/@elgato/schemas'].version;
+    assert.equal(typeof schemasVersion, 'string'); assert.ok(schemasVersion.length > 0);
+    assert.ok(notices.split(/\r?\n/).includes('@elgato/schemas ' + schemasVersion), 'Notices must include the locked @elgato/schemas version');
     assert.match(notices, /sharp 0\.35\.5/); assert.match(notices, /libvips.*LGPLv3/);
     await access(path.join(output, 'node_modules/@img/sharp-win32-x64/lib/libvips-42.dll'));
     assert.match(await readFile(path.join(output, 'third-party/LGPL-3.0.txt'), 'utf8'), /GNU LESSER GENERAL PUBLIC LICENSE/);

@@ -20,21 +20,52 @@ function supported(font, text) {
   return !!font && Array.from(text).every(char => font.charToGlyphIndex(char) !== 0);
 }
 function widthOf(text, size, font) {
+  if (!text) return 0;
   if (supported(font, text)) {
-    const box = font.getPath(text, 0, 0, size).getBoundingBox();
-    return Math.max(font.getAdvanceWidth(text, size), box.x2 - box.x1);
+    // Shape once: the returned pen position includes kerning/ligatures, while
+    // the outline also accounts for ink extending beyond the advance width.
+    const outline = new opentype.Path();
+    const advance = font.forEachGlyph(text, 0, 0, size, undefined, (glyph, x, y, fontSize, options) => {
+      const path = glyph.getPath(x, y, fontSize, options, font);
+      if (!(options.drawSVG || options.drawLayers) || !path._layers?.length) outline.extend(path);
+    });
+    const box = outline.getBoundingBox();
+    return Math.max(advance, box.x2 - box.x1);
   }
-  return Array.from(segments.segment(text), ({ segment }) => supported(font, segment) ? font.getAdvanceWidth(segment, size) : 2 * size).reduce((sum, width) => sum + width, 0);
+  let width = 0;
+  for (const { segment } of segments.segment(text)) width += supported(font, segment) ? font.getAdvanceWidth(segment, size) : 2 * size;
+  return width;
 }
-export function fitCaption(value, font, { maxSize = 10, minSize = 8.5, maxWidth = TEXT_WIDTH } = {}) {
-  const original = normalized(value);
-  let size = maxSize;
-  while (size > minSize && widthOf(original, size, font) > maxWidth) size = Math.max(minSize, size - 0.5);
-  if (widthOf(original, size, font) <= maxWidth) return { text: original, size, width: widthOf(original, size, font) };
-  const chars = Array.from(segments.segment(original), segment => segment.segment);
-  while (chars.length && widthOf(chars.join('').trimEnd() + '…', size, font) > maxWidth) chars.pop();
-  const text = chars.join('').trimEnd() + '…';
-  return { text, size, width: widthOf(text, size, font) };
+function sizedLine(text, font, { maxSize = 10, minSize = 8.5, maxWidth = TEXT_WIDTH } = {}) {
+  let size = maxSize, width = widthOf(text, size, font);
+  while (size > minSize && width > maxWidth) {
+    size = Math.max(minSize, size - 0.5);
+    width = widthOf(text, size, font);
+  }
+  return { text, size, width };
+}
+export function fitCaption(value, font, sizes = {}) {
+  const original = normalized(value), maxWidth = sizes.maxWidth ?? TEXT_WIDTH;
+  const line = sizedLine(original, font, sizes);
+  if (line.width <= maxWidth) return line;
+  const { size } = line;
+  const chars = Array.from(segments.segment(original), ({ segment }) => segment);
+  let best = { text: '…', size, width: widthOf('…', size, font) };
+  if (best.width > maxWidth) return { text: '', size, width: 0 };
+  // Reshape each candidate, including its ellipsis, rather than adding glyph
+  // widths independently (which would lose kerning and contextual shaping).
+  // Binary search bounds the number of probes even for huge metadata fields.
+  let low = 0, high = chars.length;
+  while (low < high) {
+    const middle = Math.ceil((low + high) / 2);
+    const text = chars.slice(0, middle).join('').trimEnd() + '…';
+    const width = widthOf(text, size, font);
+    if (width <= maxWidth) {
+      low = middle;
+      best = { text, size, width };
+    } else high = middle - 1;
+  }
+  return best;
 }
 // Hold both ends, then ease back along the same line without a wraparound jump.
 export function scrollOffset(width, elapsedMs = 0) {
@@ -56,13 +87,7 @@ export function formatRemaining(milliseconds) {
   return '-' + (minutes >= 60 ? Math.floor(minutes / 60) + ':' + pad(minutes % 60) : minutes) + ':' + pad(seconds % 60);
 }
 function prepareLine(value, font, sizes, scrollText = false) {
-  let line;
-  if (scrollText) {
-    const text = normalized(value);
-    let size = sizes.maxSize;
-    while (size > sizes.minSize && widthOf(text, size, font) > TEXT_WIDTH) size = Math.max(sizes.minSize, size - 0.5);
-    line = { text, size, width: widthOf(text, size, font) };
-  } else line = fitCaption(value, font, sizes);
+  const line = scrollText ? sizedLine(normalized(value), font, sizes) : fitCaption(value, font, sizes);
   if (supported(font, line.text) && line.text) {
     const outline = font.getPath(line.text, 0, 0, line.size), box = outline.getBoundingBox();
     return { ...line, left: box.x1, inkWidth: box.x2 - box.x1, path: outline.toPathData(2) };
@@ -71,12 +96,15 @@ function prepareLine(value, font, sizes, scrollText = false) {
 }
 function prepareCaption(title, artists, fonts, options) {
   const compact = options.captionLayout === 'compact';
-  return {
-    title: normalized(title), artists: normalized(artists), showText: options.showText !== false, compact,
-    track: prepareLine(title, fonts.bold, { maxSize: 10, minSize: 9 }, options.scrollText),
-    artist: prepareLine(artists, fonts.regular, { maxSize: 9, minSize: 8.5 }, options.scrollText),
-    combined: compact ? prepareLine([normalized(title), normalized(artists)].filter(Boolean).join(' • '), fonts.bold, { maxSize: 10, minSize: 9 }, options.scrollText) : undefined
-  };
+  const layout = { title: normalized(title), artists: normalized(artists), showText: options.showText !== false, compact };
+  if (!layout.showText) return layout;
+  if (compact) {
+    layout.combined = prepareLine([layout.title, layout.artists].filter(Boolean).join(' • '), fonts.bold, { maxSize: 10, minSize: 9 }, options.scrollText);
+  } else {
+    layout.track = prepareLine(layout.title, fonts.bold, { maxSize: 10, minSize: 9 }, options.scrollText);
+    layout.artist = prepareLine(layout.artists, fonts.regular, { maxSize: 9, minSize: 8.5 }, options.scrollText);
+  }
+  return layout;
 }
 function drawLine(line, baseline, fill, offset = 0, center = SIZE / 2) {
   if (!line.text) return '';
@@ -102,7 +130,7 @@ function renderCaption(cover, layout, fonts, { elapsedMs = 0, remainingMs, playb
   const image = (prepared.validCover ?? /^data:image\/(?:jpeg|png|webp);base64,[A-Za-z0-9+/=\r\n]+$/.test(cover || '')) ?
     '<image x="0" y="0" width="72" height="72" preserveAspectRatio="xMidYMid slice" xlink:href="' + cover + '"/>' : '';
   const textTop = layout.compact ? 56 : 48;
-  const caption = layout.compact ? drawLine(layout.combined, 66, '#fff', scrollOffset(layout.combined.width, elapsedMs)) :
+  const caption = !layout.showText ? '' : layout.compact ? drawLine(layout.combined, 66, '#fff', scrollOffset(layout.combined.width, elapsedMs)) :
     '<g clip-path="url(#track)">' + drawLine(layout.track, 58, '#fff', scrollOffset(layout.track.width, elapsedMs)) +
     '</g><g clip-path="url(#artist)">' + drawLine(layout.artist, 69, '#dedede', scrollOffset(layout.artist.width, elapsedMs)) + '</g>';
   return '<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="144" height="144" viewBox="0 0 72 72">' +

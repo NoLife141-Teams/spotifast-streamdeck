@@ -310,7 +310,12 @@ export function createRuntime(streamDeck, {
     finally { if (!refreshing) schedulePoll(); }
   }
   streamDeck.ui.onDidAppear(() => { uiSession++; uiRevision++; });
-  streamDeck.ui.onDidDisappear(() => { uiSession++; uiRevision++; });
+  streamDeck.ui.onDidDisappear(() => {
+    // SDK 3 updates ui.action before invoking this listener and retains it for
+    // late unrelated or overlapping disappearance events. Only a true close
+    // ends the current session; every appearance still starts a fresh one.
+    if (!streamDeck.ui.action) { uiSession++; uiRevision++; }
+  });
   streamDeck.actions.onWillAppear(event => {
     visible.set(event.action.id, { action: event.action, settings: event.payload.settings ?? {} });
     refresh().catch(report);

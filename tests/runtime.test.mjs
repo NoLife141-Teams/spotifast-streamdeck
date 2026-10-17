@@ -32,7 +32,8 @@ async function runtime(options = {}) {
   if (!selectedRenderer.hasScrollingText) selectedRenderer.hasScrollingText = (...args) => textMetrics.hasScrollingText(...args);
   const api = createRuntime(sdk, { client, artwork: { async get() {} }, timers, ...options, artworkRenderer: selectedRenderer });
   await api.start();
-  const select = action => { if (sdk.ui.action) callbacks.uiDisappear({ action: sdk.ui.action }); sdk.ui.action = action; if (action) callbacks.uiAppear({ action }); };
+  // The SDK updates its current action before notifying runtime listeners.
+  const select = action => { const previous = sdk.ui.action; sdk.ui.action = undefined; if (previous) callbacks.uiDisappear({ action: previous }); sdk.ui.action = action; if (action) callbacks.uiAppear({ action }); };
   return { api, client, sdk, callbacks, messages, warnings, errors, select, timeouts, intervals };
 }
 
@@ -270,6 +271,52 @@ test('R07: delayed responses cannot cross a selection or a reopen of the same ke
   const { api, client, messages, select } = await runtime(); const action = key('playlist', 'A'); select(action);
   const old = deferred(); client.snapshot = () => old.promise; const pending = api.inspectorRequest({ action, payload: { type: 'status', requestId: 'old' } }); await flush();
   select(key('playlist', 'B')); select(action); old.resolve({ ...client.data, title: 'Old' }); await pending; assert.equal(messages.length, 0);
+});
+
+test('a late disappearance from A preserves the selected B inspector request', async () => {
+  const { api, client, sdk, callbacks, messages, select } = await runtime();
+  const first = key('playlist', 'A'), current = key('playlist', 'B');
+  select(first);
+  sdk.ui.action = current; callbacks.uiAppear({ action: current });
+  const waiting = deferred(); client.snapshot = () => waiting.promise;
+  const pending = api.inspectorRequest({ action: current, payload: { type: 'status', requestId: 'B-status' } });
+  await flush();
+  callbacks.uiDisappear({ action: first });
+  waiting.resolve({ ...client.data, title: 'Current B' }); await pending;
+  assert.equal(messages.length, 1);
+  assert.equal(messages[0].target, 'B');
+  assert.equal(messages[0].requestId, 'B-status');
+  api.stop();
+});
+
+test('same-action overlapping appearances preserve new requests and discard old-session responses', async () => {
+  const { api, client, callbacks, messages, select } = await runtime();
+  const action = key('playlist', 'A'); select(action);
+  const old = deferred(), current = deferred(); let reads = 0;
+  client.snapshot = () => [old, current][reads++].promise;
+  const previous = api.inspectorRequest({ action, payload: { type: 'status', requestId: 'old' } });
+  await flush();
+  // SDK appearance counting retains A when its previous appearance disappears late.
+  callbacks.uiAppear({ action });
+  const pending = api.inspectorRequest({ action, payload: { type: 'status', requestId: 'current' } });
+  await flush(); callbacks.uiDisappear({ action });
+  old.resolve(client.data); await previous;
+  assert.equal(messages.length, 0);
+  current.resolve(client.data); await pending;
+  assert.equal(messages.length, 1);
+  assert.equal(messages[0].requestId, 'current');
+  api.stop();
+});
+
+test('closing and reopening the same action discards a delayed response', async () => {
+  const { api, client, messages, select } = await runtime();
+  const action = key('playlist', 'A'); select(action);
+  const waiting = deferred(); client.snapshot = () => waiting.promise;
+  const pending = api.inspectorRequest({ action, payload: { type: 'status', requestId: 'closed' } });
+  await flush(); select(undefined); select(action);
+  waiting.resolve(client.data); await pending;
+  assert.equal(messages.length, 0);
+  api.stop();
 });
 
 test('R07: only the latest request for an inspector may display its result', async () => {

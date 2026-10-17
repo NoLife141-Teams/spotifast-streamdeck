@@ -120,9 +120,10 @@ var Spotifast = class {
   customPath = "";
   cachedPath;
   configuration = 0;
-  constructor({ queue = new CommandQueue(), executeFile = execute } = {}) {
+  constructor({ queue = new CommandQueue(), executeFile = execute, spawnFile = spawn } = {}) {
     this.queue = queue;
     this.executeFile = executeFile;
+    this.spawnFile = spawnFile;
   }
   configure(customPath = "") {
     const next = String(customPath).trim();
@@ -185,20 +186,22 @@ var Spotifast = class {
   async snapshot() {
     return parseNowPlaying(await this.run(["now-playing", "--raw"]));
   }
-  async open() {
-    try {
-      await this.run(["show"]);
-    } catch {
+  open() {
+    return this.queue.run(async () => {
       const exe = await this.executable();
+      // A bare launch starts the app, or surfaces its existing instance. Do not
+      // run the GUI through execFile: its timeout would kill a cold launch.
       await new Promise((resolve, reject) => {
-        const child = spawn(exe, [], { detached: true, stdio: "ignore", windowsHide: true, shell: false });
+        const child = this.spawnFile(exe, [], {
+          cwd: path.dirname(exe), detached: true, stdio: "ignore", windowsHide: false, shell: false
+        });
         child.once("error", reject);
         child.once("spawn", () => {
           child.unref();
           resolve();
         });
       });
-    }
+    }, { key: 'open', priority: 20, dedupe: true });
   }
 };
 function isArtworkUrl(value) {

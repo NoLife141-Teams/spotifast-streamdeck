@@ -264,7 +264,7 @@ export function createRuntime(streamDeck, {
     await sendStatus(token, statusPayload(false, userError(error)));
     await refresh();
   }
-  async function perform(event, args) {
+  async function perform(event, args, launch = false) {
     const token = inspectorToken(event.action);
     let request;
     try {
@@ -280,7 +280,7 @@ export function createRuntime(streamDeck, {
         updateAnimationTimer();
         renderEntries(request.entries).catch(report);
       }
-      if (suffix(event.action) === 'open') await client.open();
+      if (launch || suffix(event.action) === 'open') await client.open();
       else await client.run(args);
       if (!started) return;
       if (request && playbackRequest === request) { request.accepted = true; request.until = now() + 5000; }
@@ -337,6 +337,12 @@ export function createRuntime(streamDeck, {
   });
   streamDeck.settings.onDidReceiveGlobalSettings(event => { configure(event.settings); refresh().catch(report); });
   streamDeck.actions.onKeyDown(event => {
+    // Offline keys display Open Spotifast, regardless of their usual action.
+    // Honor that label before validating playlist settings; macros keep their commands.
+    if (!online && !event.payload.isInMultiAction) {
+      perform(event, undefined, true).catch(report);
+      return;
+    }
     try {
       const args = commandFor(suffix(event.action), event.payload.settings, undefined, event.payload.isInMultiAction ? event.payload.userDesiredState : undefined);
       perform(event, args).catch(report);

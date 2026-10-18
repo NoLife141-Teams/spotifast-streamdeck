@@ -80,6 +80,35 @@ test('release staging refuses an installer changed after testing or the wrong ru
     await assert.rejects(prepareRelease(root), /exact verified/);
   } finally { await rm(root, { recursive: true, force: true }); }
 });
+test('release staging never signs off on installer bytes replaced after its verification check', async () => {
+  const root = await mkdtemp(path.join(tmpdir(), 'spotifast-staging-replacement-'));
+  let watcher;
+  try {
+    const dist = path.join(root, 'dist'), installer = 'rocks.spotifast.streamdeck.streamDeckPlugin';
+    await mkdir(dist); await mkdir(path.join(root, 'releases'));
+    await writeFile(path.join(root, 'package.json'), '{"version":"1.2.3"}'); await writeFile(path.join(root, 'LICENSE'), 'MIT');
+    await writeFile(path.join(root, 'releases/v1.2.3.md'), '## English\nTest\n## Français\nTest');
+    await writeFile(path.join(dist, installer), 'tested');
+    const digest = bytes => createHash('sha256').update(bytes).digest('hex');
+    const report = { sha256: digest('tested'), sdkSmoke: 'passed', platform: 'win32', node: 'v20.20.0' };
+    const reportBytes = JSON.stringify(report);
+    await writeFile(path.join(dist, 'package-verification.json'), reportBytes);
+    let replaced = false;
+    watcher = watch(dist, (_event, filename) => {
+      if (filename === 'LICENSE' && !replaced) {
+        replaced = true;
+        writeFileSync(path.join(dist, installer), 'unverified replacement');
+        writeFileSync(path.join(dist, 'package-verification.json'), JSON.stringify({ ...report, sha256: digest('unverified replacement') }));
+      }
+    });
+    await prepareRelease(root);
+    assert.equal(replaced, true, 'The installer must change after its verification check');
+    const sums = await readFile(path.join(dist, 'SHA256SUMS.txt'), 'utf8');
+    assert.ok(sums.includes(report.sha256 + '  ' + installer + '\n'));
+    assert.ok(sums.includes(digest(reportBytes) + '  package-verification.json\n'));
+    assert.ok(!sums.includes(digest(await readFile(path.join(dist, installer))) + '  ' + installer + '\n'), 'Publication must reject the replacement against the staged checksums');
+  } finally { watcher?.close(); await rm(root, { recursive: true, force: true }); }
+});
 test('CI preserves required PR checks and gates publication on tag plus both runtime lanes', async () => {
   const source = await readFile(new URL('../.github/workflows/check.yml', import.meta.url), 'utf8');
   // Git checks out CRLF on Windows; workflow semantics do not depend on EOLs.

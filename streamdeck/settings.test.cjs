@@ -7,9 +7,9 @@ const translations = require('./ui/i18n.js');
 const spotifyLinks = require('./ui/spotify.js');
 const source = fs.readFileSync(process.argv[2] || path.join(__dirname, 'ui/settings.js'), 'utf8');
 function inspector({ action = 'playlist', settings = {}, globals = {}, ready = true, clipboard } = {}) {
-  const elements = new Map(); const element = id => { if (!elements.has(id)) elements.set(id, { value: '', checked: false, hidden: false, disabled: false, style: {}, attributes: {}, setAttribute(name, value) { this.attributes[name] = value; }, focus() { this.focused = true; }, select() { this.selected = true; } }); return elements.get(id); };
+  const elements = new Map(); const element = id => { if (!elements.has(id)) elements.set(id, { value: '', checked: false, hidden: false, disabled: false, style: {}, attributes: {}, setAttribute(name, value) { this.attributes[name] = value; }, replaceChildren(...children) { this.children = children; }, focus() { this.focused = true; }, select() { this.selected = true; } }); return elements.get(id); };
   class Socket { static OPEN = 1; constructor() { this.readyState = 0; this.messages = []; Socket.last = this; } send(text) { this.messages.push(JSON.parse(text)); } }
-  const window = {}, document = { activeElement: null, documentElement: {}, getElementById: element, querySelectorAll: () => [] };
+  const window = {}, document = { createElement: () => ({}), activeElement: null, documentElement: {}, getElementById: element, querySelectorAll: () => [] };
   vm.runInNewContext(source, { window, document, WebSocket: Socket, SpotifastI18n: translations, SpotifastSpotify: spotifyLinks, navigator: { clipboard } });
   window.connectElgatoStreamDeckSocket(28196, 'live-inspector', 'registerPropertyInspector', '{}', JSON.stringify({ action: 'rocks.spotifast.streamdeck.' + action, context: 'different-instance', payload: { settings: { uri: 'spotify:playlist:Old', step: 5, showText: true, preserved: 'keep', ...settings } } }));
   const socket = Socket.last; socket.readyState = Socket.OPEN; socket.onopen();
@@ -273,4 +273,44 @@ test('preview hides stale artwork offline and refuses external image sources', (
   receive('sendToPropertyInspector', { type: 'preview', requestId, image: 'https://untrusted.example/track', messageKey: 'previewOffline', online: false });
   assert.equal(element('artworkPreview').src, '../imgs/music.png'); assert.match(element('previewStatus').textContent, /unavailable/);
   socket.onerror(); assert.equal(element('showElapsed').disabled, true); assert.equal(element('showProgress').disabled, true); assert.match(element('previewStatus').textContent, /Connection to Stream Deck was lost/);
+});
+
+test('device list is fetched only explicitly and selection never transfers or chooses a first device', () => {
+  const { element, receive, sent } = inspector({ action: 'device' });
+  assert.equal(element('devices').hidden, false); assert.equal(element('deviceId').disabled, true);
+  assert.equal(sent('sendToPlugin').filter(message => message.payload.type === 'devices').length, 0);
+  element('refreshDevices').onclick(); const requestId = sent('sendToPlugin').at(-1).payload.requestId;
+  assert.equal(element('refreshDevices').disabled, true);
+  receive('sendToPropertyInspector', { type: 'devices', requestId, devices: [{ id: 'a', name: '<Kitchen>', kind: 'Speaker', active: false }, { id: 'b', name: '<Kitchen>', kind: 'Speaker', active: true }], messageKey: 'devicesRefreshed' });
+  assert.equal(element('deviceId').value, ''); assert.equal(element('deviceId').disabled, false);
+  assert.match(element('deviceId').children[1].textContent, /<Kitchen>.*a$/); assert.match(element('deviceId').children[2].textContent, /<Kitchen>.*b$/);
+  assert.equal(sent('setSettings').length, 0);
+  element('deviceId').value = 'b'; element('deviceId').onchange();
+  assert.equal(sent('setSettings').at(-1).payload.deviceId, 'b');
+  assert.equal(sent('setSettings').at(-1).payload.preserved, 'keep');
+  assert.equal(sent('sendToPlugin').at(-1).payload.type, 'devices');
+  element('deviceId').value = 'arbitrary'; element('deviceId').onchange(); assert.equal(sent('setSettings').length, 1);
+});
+
+test('saved missing devices survive refresh without substitution and old replies cannot replace a new list', () => {
+  const { element, receive, sent } = inspector({ action: 'device', settings: { deviceId: 'saved' } });
+  assert.equal(element('deviceId').value, 'saved'); assert.equal(element('deviceId').children.at(-1).disabled, true);
+  element('refreshDevices').onclick(); const first = sent('sendToPlugin').at(-1).payload.requestId;
+  receive('sendToPropertyInspector', { type: 'devices', requestId: first, devices: [], messageKey: 'devicesEmpty' });
+  element('refreshDevices').onclick(); const second = sent('sendToPlugin').at(-1).payload.requestId;
+  receive('sendToPropertyInspector', { type: 'devices', requestId: second, devices: [{ id: 'new', name: 'Phone', kind: 'Smartphone', active: true }], messageKey: 'devicesRefreshed' });
+  receive('sendToPropertyInspector', { type: 'devices', requestId: first, devices: [{ id: 'wrong', name: 'Old', kind: 'Speaker', active: false }] });
+  assert.equal(element('deviceId').children[1].value, 'new'); assert.equal(element('deviceId').value, 'saved');
+  assert.equal(sent('setSettings').length, 0);
+});
+
+test('device request state is cleared by executable changes or disconnect and status shows actual active name', () => {
+  const { element, receive, sent, socket } = inspector({ action: 'device' });
+  receive('sendToPropertyInspector', { type: 'status', online: true, messageKey: 'connected', activeDevice: 'Kitchen' });
+  assert.match(element('activeDevice').textContent, /Kitchen/);
+  element('refreshDevices').onclick(); const requestId = sent('sendToPlugin').at(-1).payload.requestId;
+  element('exe').value = 'D:/New/spotifast.exe'; element('exe').onchange();
+  receive('sendToPropertyInspector', { type: 'devices', requestId, devices: [{ id: 'old', name: 'Old', kind: 'Speaker', active: false }] });
+  assert.equal(element('deviceId').disabled, true); assert.equal(element('deviceId').children.length, 1);
+  socket.onclose(); assert.equal(element('refreshDevices').disabled, true); assert.match(element('activeDevice').textContent, /No active device/);
 });

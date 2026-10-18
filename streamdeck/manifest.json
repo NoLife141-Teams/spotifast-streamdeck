@@ -122,6 +122,24 @@
       ]
     },
     {
+      "UUID": "rocks.spotifast.streamdeck.setvolume",
+      "Name": "Set volume",
+      "Icon": "imgs/volumeup",
+      "Tooltip": "Spotifast: Set volume",
+      "PropertyInspectorPath": "ui/settings.html",
+      "Controllers": [
+        "Keypad"
+      ],
+      "States": [
+        {
+          "Image": "imgs/volumeup",
+          "TitleAlignment": "bottom",
+          "FontSize": 11
+        }
+      ],
+      "SupportedInMultiActions": true
+    },
+    {
       "UUID": "rocks.spotifast.streamdeck.volumedown",
       "Name": "Volume −",
       "Icon": "imgs/volumedown",

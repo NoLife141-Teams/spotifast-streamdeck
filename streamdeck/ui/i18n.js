@@ -33,7 +33,8 @@
       description: 'Local Spotifast controls: playback, artwork, favorites, playlists and volume.',
       action_playpause: 'Play / Pause (icon)', action_next: 'Next', action_previous: 'Previous',
       action_nowplaying: 'Play / Pause with artwork', action_volumeup: 'Volume +', action_volumedown: 'Volume −',
-      action_mute: 'Mute', action_shuffle: 'Shuffle', action_repeat: 'Repeat', action_like: 'Favorite',
+      absoluteVolumeLabel: 'Set volume (%)', absoluteVolumeHint: 'Sets exactly this volume, including in Multi Actions. 0 is silent.',
+      action_setvolume: 'Set volume', action_mute: 'Mute', action_shuffle: 'Shuffle', action_repeat: 'Repeat', action_like: 'Favorite',
       action_playlist: 'Play a playlist', action_open: 'Open Spotifast', action_volume: 'Volume (dial)',
       dialTooltip: 'Turn: volume. Press: mute. Tap: play/pause.', rotate: 'Adjust volume', push: 'Mute', touch: 'Play / Pause'
     },
@@ -66,7 +67,8 @@
       description: 'Contrôle local de Spotifast : lecture, pochette, favoris, playlists et volume.',
       action_playpause: 'Lecture / Pause (icône)', action_next: 'Suivant', action_previous: 'Précédent',
       action_nowplaying: 'Lecture / Pause avec pochette', action_volumeup: 'Volume +', action_volumedown: 'Volume −',
-      action_mute: 'Sourdine', action_shuffle: 'Lecture aléatoire', action_repeat: 'Répétition', action_like: 'Favori',
+      absoluteVolumeLabel: 'Volume cible (%)', absoluteVolumeHint: 'Définit ce volume exact, y compris dans les multi-actions. 0 coupe le son.',
+      action_setvolume: 'Définir le volume', action_mute: 'Sourdine', action_shuffle: 'Lecture aléatoire', action_repeat: 'Répétition', action_like: 'Favori',
       action_playlist: 'Lancer une playlist', action_open: 'Ouvrir Spotifast', action_volume: 'Volume (molette)',
       dialTooltip: 'Tourner : volume. Appuyer : sourdine. Toucher : lecture/pause.', rotate: 'Régler le volume', push: 'Sourdine', touch: 'Lecture / Pause'
     }

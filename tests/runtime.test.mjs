@@ -787,3 +787,12 @@ test('offline key launch failures alert and report the localized cause', async (
   assert.equal(messages.at(-1).messageKey, 'executableMissing');
   api.stop();
 });
+
+test('absolute volume key forwards the configured value and Multi Action FIFO intent', async () => {
+  const { api, client, callbacks } = await runtime(); const action = key('setvolume');
+  api.visible.set(action.id, { action, settings: { volumePercent: 25 } }); await api.refresh();
+  assert.equal(action.titles.at(-1), '25%');
+  const sent = []; client.run = async (args, options) => sent.push({ args, options });
+  callbacks.onKeyDown({ action, payload: { settings: { volumePercent: 25 }, isInMultiAction: true, userDesiredState: 0 } }); await flush();
+  assert.deepEqual(sent, [{ args: ['volume', '25'], options: { ordered: true } }]); api.stop();
+});

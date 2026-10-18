@@ -2,6 +2,7 @@ import { createDiagnostics } from './diagnostics.mjs';
 import { ArtworkRenderer } from './artwork.mjs';
 import { UUID, actions, Spotifast, ArtworkCache, shortText, commandFor, remainingTime, absoluteVolume, seekSeconds, seekTrack } from './core.mjs';
 import translations from '../streamdeck/ui/i18n.js';
+import spotifyLinks from '../streamdeck/ui/spotify.js';
 
 export function createRuntime(streamDeck, {
   client = new Spotifast(), artwork = new ArtworkCache(), artworkRenderer = new ArtworkRenderer(),
@@ -136,6 +137,7 @@ export function createRuntime(streamDeck, {
         entry.remainingMs = remainingMs;
         entry.lastAnimationAt ??= clock;
       }
+      if (id === 'playlist') title = spotifyLinks.shortcutName(settings.displayName);
       if (['volumeup', 'volumedown', 'mute'].includes(id)) title = snapshot.volume === null ? '' : snapshot.volume + '%';
       if (['seekback', 'seekforward'].includes(id)) title = (id === 'seekback' ? '−' : '+') + seekSeconds(settings) + 's';
       if (id === 'restart') title = '0:00';
@@ -387,7 +389,8 @@ export function createRuntime(streamDeck, {
     const visual = settings => [settings.showText !== false, settings.scrollText !== false, settings.showRemaining !== false, settings.captionLayout === 'twoLines'];
     const changed = (suffix(entry.action) === 'nowplaying' && visual(entry.settings).some((value, index) => value !== visual(next)[index])) ||
       (suffix(entry.action) === 'setvolume' && absoluteVolume(entry.settings) !== absoluteVolume(next)) ||
-      (['seekback', 'seekforward'].includes(suffix(entry.action)) && seekSeconds(entry.settings) !== seekSeconds(next));
+      (['seekback', 'seekforward'].includes(suffix(entry.action)) && seekSeconds(entry.settings) !== seekSeconds(next)) ||
+      (suffix(entry.action) === 'playlist' && spotifyLinks.shortcutName(entry.settings.displayName) !== spotifyLinks.shortcutName(next.displayName));
     entry.settings = next;
     if (!changed) return;
     invalidate(entry);

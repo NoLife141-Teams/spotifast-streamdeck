@@ -855,6 +855,21 @@ test('diagnostic replies respect selection changes and do not supersede status r
   api.stop();
 });
 
+test('shortcut names update only their own key without CLI calls and preserve offline launch labels', async () => {
+  const { api, client, callbacks } = await runtime();
+  const action = key('playlist'), other = key('playlist', 'other');
+  callbacks.onWillAppear({ action, payload: { settings: { uri: 'spotify:track:ABC123' } } });
+  callbacks.onWillAppear({ action: other, payload: { settings: { displayName: 'Other' } } }); await api.refresh();
+  assert.equal(action.titles.at(-1), ''); assert.equal(other.titles.at(-1), 'Other');
+  const reads = client.reads;
+  callbacks.settings({ action, payload: { settings: { displayName: ' Focus 🎶 ', uri: 'spotify:track:ABC123', old: true } } }); await flush();
+  assert.equal(action.titles.at(-1), 'Focus 🎶'); assert.equal(other.titles.at(-1), 'Other'); assert.equal(client.reads, reads);
+  assert.equal(api.visible.get(action.id).settings.old, true);
+  client.snapshotError = new Error('offline'); await api.refresh();
+  assert.equal(action.titles.at(-1), 'Ouvrir\nSpotifast');
+  api.stop();
+});
+
 test('diagnostics reflect inspector connection checks without any visible keys', async () => {
   const { api, client, messages, select } = await runtime();
   const action = key('playlist'); select(action);

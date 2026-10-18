@@ -25,7 +25,7 @@ var actions = [
   ["shuffle","Shuffle","shuffle"],
   ["repeat","Repeat","repeat"],
   ["like","Favorite","heart"],
-  ["playlist","Play a playlist","playlist"],
+  ["playlist","Play Spotify link","playlist"],
   ["open","Open Spotifast","music"],
   ["volume","Volume (dial)","volumeup"]
 ];

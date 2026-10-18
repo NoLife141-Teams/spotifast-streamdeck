@@ -65,3 +65,48 @@ Un changement externe entre la vérification et l’écriture, ou des morceaux a
 métadonnées identiques, reste possible. Une commande acceptée ne confirme pas
 son application sur un appareil distant. La protection réduit les commandes
 obsolètes sans pouvoir supprimer cette course côté Spotifast.
+
+## Playback device / Appareil de lecture
+
+Add **Playback device**, open its settings, and click **Refresh devices**. Select
+one listed device explicitly, then press the key to transfer. Opening settings,
+refreshing, selecting an option, polling and reconnecting never transfer music.
+The key displays the active device name reported by `now-playing --raw`; the
+settings connection status also shows that reported name. Nothing changes
+optimistically when a transfer command is accepted.
+
+Ajoute **Appareil de lecture**, ouvre ses réglages et clique sur **Actualiser les
+appareils**. Choisis explicitement un appareil listé, puis appuie sur la touche
+pour transférer la lecture. Ouvrir les réglages, actualiser ou sélectionner un
+appareil ne transfère rien. La touche indique uniquement l’appareil actif
+annoncé par Spotifast; elle n’annonce pas un transfert réussi avant ce statut.
+
+Selections are stored by opaque device ID, never by name or list position.
+Names that are identical remain distinguishable because the picker also shows
+the kind and complete ID. A missing saved selection stays selected and marked
+unavailable; it is never replaced by the first device. Malformed/duplicate IDs
+make the entire inventory unusable rather than selecting an ambiguous target.
+
+The key re-reads the inventory inside its FIFO command transaction before
+sending `transfer -- <configured-id>`. It aborts if the selected ID disappeared,
+settings changed, the key/profile disappeared, the executable changed, the
+request expired or inventory reading failed. The `--` separator protects opaque
+IDs beginning with a hyphen from CLI option parsing. No automatic fallback,
+round-robin selection or arbitrary-device transfer is implemented.
+
+Upstream v0.13.3's [single-instance handler](https://github.com/crmne/spotifast/blob/v0.13.3/src/single_instance.rs)
+returns a cached device list and requests an asynchronous refresh for the next
+read. An explicit list refresh and a key transfer each read twice with a bounded
+500 ms interval; there is no continuous inventory polling. The upstream format
+has no refresh timestamp/completion marker, so even the second list may still
+be cached. Wake the desired device and refresh again if necessary. Device loss
+between verification and execution remains possible; a CLI success means the
+request was accepted, not that Spotify completed the remote transfer. The active
+name updates only when later playback status reports it.
+
+La liste amont est un cache : chaque lecture demande une actualisation pour
+la suivante. Le plugin lit donc deux fois avec 500 ms d’intervalle, sans scruter
+les appareils en continu. Aucune indication amont ne permet de certifier la
+fraîcheur de la seconde liste. Réveille l’appareil et actualise à nouveau si
+nécessaire. Un appareil peut encore disparaître entre contrôle et transfert;
+une commande acceptée ne confirme pas la réussite du transfert distant.

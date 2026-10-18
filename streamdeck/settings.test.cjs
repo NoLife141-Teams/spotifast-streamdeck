@@ -223,3 +223,27 @@ test('diagnostics have a manual copy fallback and keep status replies independen
   await element('copyDiagnostic').onclick();
   assert.equal(element('diagnosticPreview').selected, true); assert.match(element('diagnosticStatus').textContent, /Ctrl\+C/);
 });
+
+test('shortcut names are optional, Unicode-safe, and preserve old settings and action identifiers', () => {
+  const { element, receive, sent } = inspector({ settings: { uri: 'spotify:track:ABC123' } });
+  assert.equal(element('displayName').value, '');
+  element('displayName').value = '  Cafe\u0301 🎶\nFocus '; element('displayName').onchange();
+  const save = sent('setSettings').at(-1);
+  assert.equal(save.action, 'rocks.spotifast.streamdeck.playlist');
+  assert.equal(save.payload.displayName, 'Café 🎶 Focus');
+  assert.equal(save.payload.uri, 'spotify:track:ABC123'); assert.equal(save.payload.preserved, 'keep');
+  receive('didReceiveSettings', { settings: save.payload });
+  element('uri').value = 'spotify:show:DEF456'; element('uri').onchange();
+  assert.equal(sent('setSettings').at(-1).payload.displayName, 'Café 🎶 Focus');
+});
+
+test('all five supported link types have accurate English and French feedback', () => {
+  for (const language of ['en', 'fr']) {
+    const { element } = inspector({ globals: { language } });
+    for (const type of ['playlist', 'album', 'track', 'artist', 'show']) {
+      element('uri').value = 'spotify:' + type + ':ABC123'; element('uri').oninput();
+      assert.ok(element('uriFeedback').textContent.includes(translations.messages[language]['linkType_' + type]));
+      assert.equal(element('uri').attributes['aria-invalid'], 'false');
+    }
+  }
+});

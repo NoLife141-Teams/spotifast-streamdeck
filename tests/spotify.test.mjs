@@ -25,3 +25,16 @@ test('invalid Spotify input still cannot become a playback command', () => {
     assert.throws(() => commandFor('playlist', { uri: input }), error => error.messageKey === 'invalidUri');
   }
 });
+
+test('link types are accurate and display names preserve Unicode without changing URI commands', () => {
+  for (const type of ['playlist', 'album', 'track', 'artist', 'show']) {
+    assert.equal(links.spotifyType('https://open.spotify.com/' + type + '/ABC123'), type);
+    assert.equal(links.spotifyType('spotify:' + type + ':ABC123'), type);
+  }
+  assert.equal(links.spotifyType('https://example.com/track/ABC123'), undefined);
+  assert.equal(links.shortcutName('  Cafe\u0301\n🎶  '), 'Café 🎶');
+  const family = '👨‍👩‍👧‍👦';
+  assert.equal(links.shortcutName(family.repeat(41)), family.repeat(40));
+  assert.equal(links.shortcutName('\u0000\t'), '');
+  assert.deepEqual(commandFor('playlist', { uri: 'spotify:track:ABC123', displayName: 'Focus 🎶', unknown: 'keep' }), ['play-uri', 'spotify:track:ABC123']);
+});

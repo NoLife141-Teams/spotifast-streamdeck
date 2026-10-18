@@ -20,7 +20,7 @@ function plugin(type) {
 function controls() {
   const globalDisabled = !connected() || !globalsReady || Object.keys(globalPending).length > 0;
   for (const id of ['language', 'exe', 'check', 'open', 'diagnose']) element(id).disabled = globalDisabled;
-  for (const id of ['uri', 'step', 'volumePercent', 'seekSeconds', 'captionLayout', ...checkboxes]) element(id).disabled = !connected() || (['scrollText', 'captionLayout'].includes(id) && settings.showText === false);
+  for (const id of ['uri', 'displayName', 'step', 'volumePercent', 'seekSeconds', 'captionLayout', ...checkboxes]) element(id).disabled = !connected() || (['scrollText', 'captionLayout'].includes(id) && settings.showText === false);
 }
 function renderDiagnostic() {
   element('diagnosticPreview').hidden = !diagnosticReport;
@@ -45,10 +45,10 @@ function renderStatus() {
 }
 function renderUriValidation() {
   const input = element('uri'), value = input.value.trim();
-  const valid = Boolean(SpotifastSpotify.spotifyUri(value)), invalid = Boolean(value) && !valid;
+  const type = SpotifastSpotify.spotifyType(value), valid = Boolean(type), invalid = Boolean(value) && !valid;
   input.setAttribute('aria-invalid', String(invalid));
   input.style.borderColor = invalid ? '#fbbf24' : '';
-  element('uriFeedback').textContent = translate(invalid ? 'invalidUri' : valid ? 'validUri' : 'playlistHint');
+  element('uriFeedback').textContent = translate(invalid ? 'invalidUri' : valid ? 'validUri' : 'playlistHint', { type: translate('linkType_' + type) });
   element('uriFeedback').style.color = invalid ? '#fbbf24' : '#bbb';
 }
 function renderLanguage() {
@@ -78,7 +78,7 @@ function normalizeSeekSeconds(value) {
 }
 function normalizeCaptionLayout(value) { return value === 'twoLines' ? 'twoLines' : 'compact'; }
 function renderLocalSettings() {
-  for (const [id, value] of Object.entries({ uri: settings.uri ?? '', seekSeconds: normalizeSeekSeconds(settings.seekSeconds), volumePercent: normalizeAbsoluteVolume(settings.volumePercent), step: normalizeStep(settings.step ?? 5), captionLayout: normalizeCaptionLayout(settings.captionLayout), ...Object.fromEntries(checkboxes.map(id => [id, settings[id] !== false])) })) {
+  for (const [id, value] of Object.entries({ uri: settings.uri ?? '', displayName: SpotifastSpotify.shortcutName(settings.displayName), seekSeconds: normalizeSeekSeconds(settings.seekSeconds), volumePercent: normalizeAbsoluteVolume(settings.volumePercent), step: normalizeStep(settings.step ?? 5), captionLayout: normalizeCaptionLayout(settings.captionLayout), ...Object.fromEntries(checkboxes.map(id => [id, settings[id] !== false])) })) {
     const input = element(id);
     if (document.activeElement === input) continue;
     if (checkboxes.includes(id)) input.checked = value;
@@ -178,7 +178,7 @@ element('exe').onchange = () => saveGlobal('exePath', element('exe').value.trim(
 element('language').onchange = () => saveGlobal('language', element('language').value);
 function save(id) {
   if (!connected()) return;
-  const value = checkboxes.includes(id) ? element(id).checked : id === 'seekSeconds' ? normalizeSeekSeconds(element(id).value) : id === 'volumePercent' ? normalizeAbsoluteVolume(element(id).value) : id === 'step' ? normalizeStep(element(id).value) : id === 'captionLayout' ? normalizeCaptionLayout(element(id).value) : element(id).value.trim();
+  const value = checkboxes.includes(id) ? element(id).checked : id === 'displayName' ? SpotifastSpotify.shortcutName(element(id).value) : id === 'seekSeconds' ? normalizeSeekSeconds(element(id).value) : id === 'volumePercent' ? normalizeAbsoluteVolume(element(id).value) : id === 'step' ? normalizeStep(element(id).value) : id === 'captionLayout' ? normalizeCaptionLayout(element(id).value) : element(id).value.trim();
   if (!checkboxes.includes(id)) element(id).value = value;
   if (id === 'uri') renderUriValidation();
   localPending[id] = value;
@@ -187,7 +187,7 @@ function save(id) {
   send('setSettings', settings);
   send('getSettings');
 }
-for (const id of ['uri', 'step', 'volumePercent', 'seekSeconds', 'captionLayout', ...checkboxes]) element(id).onchange = () => save(id);
+for (const id of ['uri', 'displayName', 'step', 'volumePercent', 'seekSeconds', 'captionLayout', ...checkboxes]) element(id).onchange = () => save(id);
 element('uri').oninput = renderUriValidation;
 renderLanguage();
 controls();

@@ -4,7 +4,7 @@
 
 The plugin remains free and MIT licensed. Existing Spotify account requirements are unchanged. No subscription, paid feature, automatic installer launch or silent update is introduced.
 
-1. Review the eight focused draft PRs and their dependency order. Run the combined candidate on Windows x64, Node 20 (the embedded target) and Node 22 (compatibility). Record exact commit and commands/results, including dependency audit, all tests, Elgato validation, packaging and `npm run package:verify`.
+1. Review the eight focused PRs and their dependency order. PRs #18–#25 have been independently reviewed, corrected and merged in order. Run the release candidate on Windows x64, Node 20 (the embedded target) and Node 22 (compatibility). Record exact commit and commands/results, including dependency audit, all tests, Elgato validation, packaging and `npm run package:verify`.
 2. `package:verify` checks every archived file against the tested build, rejects unsafe paths/omissions/modified bytes, extracts the actual installer to a temporary directory and runs the real-SDK protocol smoke test against those extracted bytes. It never installs the plugin or opens Stream Deck. This is not physical-device qualification.
 3. Complete the hardware checklist below, or explicitly retain beta status and mark unavailable hardware **not tested**. Run the baseline and final performance scenarios on the same machine. No invented pass or latency target.
 4. Obtain separate final approval before merging, changing versions, creating/pushing a tag, publishing a release, or installing/upgrading the user's plugin. These are not implied by preparing draft PRs.
@@ -38,4 +38,4 @@ For every result record date, exact commit/package SHA256, Windows version, Stre
 
 ## Français
 
-Les huit PRs restent en brouillon jusqu'à revue. Les tests Windows Node 20/22 et la vérification du paquet sont distincts des essais sur matériel. L'archive officielle testée doit être exactement celle publiée, avec ses empreintes SHA-256 et la licence MIT. Le workflow ne publie que sur un tag de version explicite et attend les deux matrices. Aucun tag, fusion, publication ou remplacement de l'installation actuelle sans l'accord final distinct. Sans matériel accessible, conserver la mention bêta et **non testé**, notamment pour Stream Deck +.
+Les huit PRs #18 à #25 ont été revues, corrigées et fusionnées dans cet ordre. Les tests Windows Node 20/22 et la vérification du paquet sont distincts des essais sur matériel. L'archive officielle testée doit être exactement celle publiée, avec ses empreintes SHA-256 et la licence MIT. Le workflow ne publie que sur un tag de version explicite et attend les deux matrices. Aucun tag, fusion, publication ou remplacement de l'installation actuelle sans l'accord final distinct. Sans matériel accessible, conserver la mention bêta et **non testé**, notamment pour Stream Deck +.

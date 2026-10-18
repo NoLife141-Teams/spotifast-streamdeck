@@ -23,8 +23,9 @@ la sourdine et la lecture. Elles ne sont jamais regroupées. Les rotations hors
 multi-action peuvent encore être regroupées dans le même sens, sans franchir
 une autre commande. Une commande expirée ou une file pleine produit une erreur.
 
-These changes are covered by simulated command/runtime tests. They still need
-Windows and physical Stream Deck qualification, including rapid macro presses.
+These changes are covered by automated command/runtime tests on Windows with
+Node 20 and 22. Physical Stream Deck qualification, including rapid macro presses,
+remains outstanding.
 
 ## Seek and restart / Avance, retour et redémarrage
 

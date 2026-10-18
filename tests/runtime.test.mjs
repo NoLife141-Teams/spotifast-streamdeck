@@ -869,3 +869,104 @@ test('shortcut names update only their own key without CLI calls and preserve of
   assert.equal(action.titles.at(-1), 'Ouvrir\nSpotifast');
   api.stop();
 });
+
+test('artwork preview uses cached state and settings immediately without CLI calls or mutations', async () => {
+  let clock = 0;
+  const { api, client, callbacks, messages, select, intervals } = await runtime({ now: () => clock, artworkRenderer: {
+    async render(image, title, artists, options) { return JSON.stringify({ title, ...options }); }, hasScrollingText: async () => false
+  } });
+  const action = key(); client.data = { ...client.data, title: 'Track', state: 'paused', duration: 100000, position: 20000 };
+  callbacks.onWillAppear({ action, payload: { settings: { showText: false, showRemaining: false, privateField: 'keep' } } }); await api.refresh(); select(action);
+  const reads = client.reads, writes = action.images.length;
+  await api.inspectorRequest({ action, payload: { type: 'preview', requestId: 'live-preview', settings: { showElapsed: true, showProgress: true, showText: false, showRemaining: false, unknown: 'discard' } } });
+  const options = JSON.parse(messages.at(-1).image);
+  assert.equal(options.positionMs, 20000); assert.equal(options.progress, 0.2); assert.equal(options.remainingMs, undefined);
+  assert.equal(options.unknown, undefined); assert.equal(client.reads, reads); assert.equal(client.calls.length, 0);
+  assert.equal(action.images.length, writes); assert.equal(api.visible.get(action.id).settings.privateField, 'keep');
+  assert.equal(api.visible.get(action.id).settings.showElapsed, undefined); assert.equal(intervals.size, 0);
+  clock = 4000; await api.animate(); assert.equal(messages.length, 1, 'A paused preview creates no independent animation loop'); api.stop();
+});
+
+test('elapsed and progress hot changes share the existing timer and preview follows pause, seek and track changes', async () => {
+  let clock = 0;
+  const { api, client, callbacks, messages, select, intervals } = await runtime({ now: () => clock, artworkRenderer: {
+    async render(image, title, artists, options) { return JSON.stringify({ title, ...options }); }, hasScrollingText: async () => false
+  } });
+  const action = key(), settings = { showText: false, showRemaining: false, showElapsed: true, showProgress: true };
+  client.data = { ...client.data, title: 'First', state: 'playing', duration: 100000, position: 20000 };
+  callbacks.onWillAppear({ action, payload: { settings: { showText: false, showRemaining: false } } }); await api.refresh(); select(action);
+  assert.equal(intervals.size, 0);
+  const reads = client.reads;
+  callbacks.settings({ action, payload: { settings } }); await flush();
+  await api.inspectorRequest({ action, payload: { type: 'preview', requestId: 'preview', settings } });
+  assert.equal(client.reads, reads); assert.deepEqual([...intervals.values()].map(timer => timer.period), [1000]);
+  clock = 1000; await api.animate();
+  assert.equal(JSON.parse(action.images.at(-1)).positionMs, 21000); assert.equal(JSON.parse(messages.at(-1).image).progress, 0.21);
+  client.data = { ...client.data, state: 'paused', position: 60000 }; await api.refresh();
+  assert.equal(JSON.parse(messages.at(-1).image).positionMs, 60000); assert.equal(intervals.size, 0);
+  clock = 5000; await api.animate(); assert.equal(JSON.parse(messages.at(-1).image).positionMs, 60000);
+  client.data = { ...client.data, state: 'playing', position: 5000 }; await api.refresh();
+  assert.equal(JSON.parse(messages.at(-1).image).progress, 0.05, 'Seeking backward replaces interpolated progress');
+  client.data = { ...client.data, title: 'Second', position: 0, duration: 200000 }; await api.refresh();
+  const next = JSON.parse(messages.at(-1).image); assert.equal(next.title, 'Second'); assert.equal(next.positionMs, 0); assert.equal(next.progress, 0);
+  client.snapshotError = new Error('offline'); await api.refresh();
+  assert.equal(messages.at(-1).online, false); assert.equal(messages.at(-1).image, undefined); assert.equal(intervals.size, 0);
+  client.snapshotError = undefined; await api.refresh(); assert.equal(messages.at(-1).online, true);
+  assert.equal(client.calls.length, 0); api.stop();
+});
+
+test('progress-only and elapsed-only displays render their final stale value then stop animating', async () => {
+  for (const setting of ['showProgress', 'showElapsed']) {
+    let clock = 0;
+    const { api, client, callbacks, intervals } = await runtime({ now: () => clock, artworkRenderer: {
+      async render(image, title, artists, options) { return JSON.stringify(options); }, hasScrollingText: async () => false
+    } });
+    const action = key(); client.data = { ...client.data, title: 'Track', state: 'playing', position: 20000, duration: 100000 };
+    callbacks.onWillAppear({ action, payload: { settings: { showText: false, showRemaining: false, [setting]: true } } }); await api.refresh();
+    clock = 6000; await api.animate();
+    const image = JSON.parse(action.images.at(-1));
+    assert.equal(image[setting === 'showElapsed' ? 'positionMs' : 'progress'], setting === 'showElapsed' ? 25000 : 0.25);
+    assert.equal(intervals.size, 0); const frames = action.images.length;
+    clock = 9000; await api.animate(); assert.equal(action.images.length, frames); api.stop();
+  }
+});
+
+test('unknown duration and stopped playback never invent progress or keep a progress loop alive', async () => {
+  const { api, client, callbacks, intervals, messages, select } = await runtime({ artworkRenderer: {
+    async render(image, title, artists, options) { return JSON.stringify(options); }, hasScrollingText: async () => false
+  } });
+  const action = key(), settings = { showText: false, showRemaining: true, showProgress: true };
+  client.data = { ...client.data, title: 'Track', state: 'playing', position: 10000, duration: 0 };
+  callbacks.onWillAppear({ action, payload: { settings } }); await api.refresh(); select(action);
+  await api.inspectorRequest({ action, payload: { type: 'preview', requestId: 'preview', settings } });
+  assert.equal(JSON.parse(messages.at(-1).image).progress, undefined); assert.equal(intervals.size, 0);
+  client.data = { ...client.data, state: 'stopped', title: '', duration: 100000 }; await api.refresh();
+  assert.equal(messages.at(-1).messageKey, 'previewNoPlayback'); assert.equal(JSON.parse(messages.at(-1).image).remainingMs, undefined); assert.equal(intervals.size, 0);
+  api.stop();
+});
+
+test('slow previews cannot overwrite newer settings, another selection or a newer track', async () => {
+  const waiting = deferred(); let block = false;
+  const { api, client, callbacks, messages, select } = await runtime({ artworkRenderer: {
+    async render(image, title, artists, options) { if (block && options.showElapsed) await waiting.promise; return JSON.stringify({ title, ...options }); }, hasScrollingText: async () => false
+  } });
+  const action = key(); client.data.title = 'First'; callbacks.onWillAppear({ action, payload: {} }); await api.refresh(); select(action);
+  block = true;
+  const old = api.inspectorRequest({ action, payload: { type: 'preview', requestId: 'old', settings: { showElapsed: true } } });
+  await flush();
+  await api.inspectorRequest({ action, payload: { type: 'preview', requestId: 'new', settings: { showElapsed: false } } });
+  assert.equal(messages.at(-1).requestId, 'new');
+  waiting.resolve(); await old; assert.equal(messages.length, 1);
+  select(key('nowplaying', 'other')); client.data.title = 'Second'; await api.refresh();
+  assert.equal(messages.length, 1, 'A previous preview never follows a different selected action'); api.stop();
+});
+
+test('an unavailable upstream version never misreports an existing executable as missing', async () => {
+  const { api, client, messages, select } = await runtime(); const action = key(); select(action);
+  client.executable = async () => '/private/spotifast.exe';
+  client.run = async () => { throw Object.assign(new Error('version timeout'), { killed: true }); };
+  await api.inspectorRequest({ action, payload: { type: 'diagnostics', requestId: 'version-unavailable' } });
+  assert.equal(messages.at(-1).report.detection.found, true);
+  assert.equal(messages.at(-1).report.upstreamVersion, 'unavailable');
+  assert.notEqual(messages.at(-1).report.status.category, 'executable-missing'); api.stop();
+});

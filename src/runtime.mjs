@@ -1,3 +1,4 @@
+import { createDiagnostics } from './diagnostics.mjs';
 import { ArtworkRenderer } from './artwork.mjs';
 import { UUID, actions, Spotifast, ArtworkCache, shortText, commandFor, remainingTime, absoluteVolume, seekSeconds, seekTrack } from './core.mjs';
 import translations from '../streamdeck/ui/i18n.js';
@@ -9,7 +10,8 @@ export function createRuntime(streamDeck, {
   let t = translations.createTranslator(translations.resolveLanguage('auto', streamDeck.info.application.language));
   const visible = new Map(), artworkRequests = new Map();
   let state, online = false, refreshing, refreshAgain = false, configured = false, configuration = 0;
-  let lastError = '', uiSession = 0, uiRevision = 0, refreshTimer;
+  let lastError = '', uiSession = 0, refreshTimer;
+  const uiRevisions = new Map(), diagnostics = createDiagnostics();
   let failures = 0, retryRevision = 0;
   let sampledAt = 0, animationInterval, animationPeriod, animating, started = false;
   let playbackRequest;
@@ -70,12 +72,14 @@ export function createRuntime(streamDeck, {
     resolveConfigured();
     for (const entry of visible.values()) invalidate(entry);
   }
-  function inspectorToken(action, requestId) {
+  function inspectorToken(action, requestId, scope = 'status') {
     if (streamDeck.ui.action?.id !== action.id) return;
-    return { actionId: action.id, session: uiSession, revision: ++uiRevision, requestId };
+    const revision = (uiRevisions.get(scope) ?? 0) + 1;
+    uiRevisions.set(scope, revision);
+    return { actionId: action.id, session: uiSession, revision, scope, requestId };
   }
   function currentInspector(token) {
-    return token && token.session === uiSession && token.revision === uiRevision && streamDeck.ui.action?.id === token.actionId;
+    return token && token.session === uiSession && token.revision === uiRevisions.get(token.scope) && streamDeck.ui.action?.id === token.actionId;
   }
   async function sendStatus(token, payload) {
     if (currentInspector(token)) await streamDeck.ui.sendToPropertyInspector({ ...payload, ...(token.requestId === undefined ? {} : { requestId: token.requestId }) });
@@ -235,6 +239,7 @@ export function createRuntime(streamDeck, {
           if (!started || !visible.size) break;
           if (config !== configuration) { refreshAgain = true; continue; }
           state = next; sampledAt = now(); online = true; lastError = '';
+          diagnostics.recordSuccess('status');
           failures = 0;
           confirmPlayback(next);
         } catch (error) {
@@ -242,6 +247,7 @@ export function createRuntime(streamDeck, {
           if (config !== configuration) { refreshAgain = true; continue; }
           if (retry === retryRevision) failures = Math.min(failures + 1, 4);
           online = false;
+          diagnostics.recordError(error, 'status');
           resetPlaybackFeedback();
           const message = error.message ?? t('unavailable');
           if (message !== lastError) streamDeck.logger.warn(t('unavailable'));
@@ -260,6 +266,7 @@ export function createRuntime(streamDeck, {
     refreshTimer = timers.setTimeout(() => { refreshTimer = undefined; refresh().catch(report); }, 250);
   }
   async function failed(event, error, token) {
+    diagnostics.recordError(error, 'command');
     const entry = visible.get(event.action.id);
     if (entry) invalidate(entry);
     streamDeck.logger.warn('Action ' + suffix(event.action) + ': ' + error.message);
@@ -290,6 +297,7 @@ export function createRuntime(streamDeck, {
         await client.seek(args, { snapshot: state, ageMs: online ? now() - sampledAt : Infinity,
           valid: () => started && config === configuration && seekTrack(state) === expected && (!entry || visible.get(event.action.id) === entry) });
       } else await client.run(args, { ordered });
+      diagnostics.recordSuccess(launch || suffix(event.action) === 'open' ? 'open' : 'command');
       if (!started) return;
       if (request && playbackRequest === request) { request.accepted = true; request.until = now() + 5000; }
       const entry = visible.get(event.action.id);
@@ -302,7 +310,28 @@ export function createRuntime(streamDeck, {
     }
   }
   async function performInvalid(event, error) { await failed(event, error, inspectorToken(event.action)); }
+  async function diagnosticRequest(event) {
+    const token = inspectorToken(event.action, event.payload.requestId, 'diagnostics');
+    if (!token) return;
+    await ready;
+    let detected = null, upstreamVersion;
+    const config = configuration;
+    try {
+      if (client.executable) { await client.executable(); detected = true; }
+      // --version is handled by Spotifast before startup. Only this explicit
+      // local diagnostic request invokes it; polling and previews never do.
+      if (detected) { try { upstreamVersion = await client.run(['--version']); } catch {} }
+    } catch (error) { detected = false; diagnostics.recordError(error, 'inspector'); }
+    if (config !== configuration) return;
+    const report = diagnostics.snapshot({
+      pluginVersion: streamDeck.info.plugin?.version, hostVersion: streamDeck.info.application.version,
+      upstreamVersion, detected, pathMode: client.customPath ? 'custom' : 'automatic',
+      online, hasPlayback: online && Boolean(state?.title) && state?.state !== 'stopped'
+    });
+    await sendStatus(token, { type: 'diagnostics', report });
+  }
   async function inspectorRequest(event) {
+    if (event.payload?.type === 'diagnostics') return diagnosticRequest(event);
     if (!['open', 'status'].includes(event.payload?.type)) return;
     const token = inspectorToken(event.action, event.payload.requestId);
     if (!token) return;
@@ -312,17 +341,18 @@ export function createRuntime(streamDeck, {
       if (event.payload.type === 'open') await client.open();
       let config, snapshot;
       do { config = configuration; snapshot = await client.snapshot(); } while (config !== configuration && currentInspector(token));
+      diagnostics.recordSuccess('inspector');
       await sendStatus(token, statusPayload(true, snapshot.title ? 'nowPlaying' : 'connected', snapshot.title));
       if (event.payload.type === 'open') await refresh();
-    } catch (error) { await sendStatus(token, statusPayload(false, userError(error))); }
+    } catch (error) { diagnostics.recordError(error, 'inspector'); await sendStatus(token, statusPayload(false, userError(error))); }
     finally { if (!refreshing) schedulePoll(); }
   }
-  streamDeck.ui.onDidAppear(() => { uiSession++; uiRevision++; });
+  streamDeck.ui.onDidAppear(() => { uiSession++; uiRevisions.clear(); });
   streamDeck.ui.onDidDisappear(() => {
     // SDK 3 updates ui.action before invoking this listener and retains it for
     // late unrelated or overlapping disappearance events. Only a true close
     // ends the current session; every appearance still starts a fresh one.
-    if (!streamDeck.ui.action) { uiSession++; uiRevision++; }
+    if (!streamDeck.ui.action) { uiSession++; uiRevisions.clear(); }
   });
   streamDeck.actions.onWillAppear(event => {
     visible.set(event.action.id, { action: event.action, settings: event.payload.settings ?? {} });

@@ -807,3 +807,50 @@ test('seek uses guarded client execution and invalidates an in-flight request af
   assert.equal(client.calls.length, 0);
   callbacks.onWillDisappear({ action }); assert.equal(guarded.options.valid(), false); api.stop();
 });
+
+test('local diagnostics are redacted and never poll or launch the player', async () => {
+  const { api, client, sdk, messages, select } = await runtime();
+  const action = key('playlist'); select(action);
+  sdk.info.plugin = { version: '0.2.7.0' }; sdk.info.application.version = '7.1.0';
+  client.executable = async () => 'C:\\Users\\PrivatePerson\\Spotifast\\spotifast.exe';
+  client.run = async args => { client.calls.push(args); return 'spotifast 0.13.3\n'; };
+  await api.inspectorRequest({ action, payload: { type: 'diagnostics', requestId: 'local-diagnostic' } });
+  assert.equal(client.reads, 0); assert.equal(client.opened, undefined);
+  assert.deepEqual(client.calls, [['--version']]);
+  const report = messages.at(-1).report;
+  assert.equal(report.pluginVersion, '0.2.7.0'); assert.equal(report.upstreamVersion, '0.13.3');
+  assert.equal(report.detection.found, true); assert.equal(report.detection.pathMode, 'automatic');
+  assert.equal(messages.at(-1).requestId, 'local-diagnostic');
+  assert.doesNotMatch(JSON.stringify(report), /PrivatePerson|spotifast\.exe|C:\\/);
+  api.stop();
+});
+
+test('diagnostics retain useful error categories without raw logs or playback identifiers', async () => {
+  const { api, client, callbacks, messages, select } = await runtime();
+  const action = key(); select(action);
+  client.data = { ...client.data, title: 'PrivateTrack', artists: 'PrivateArtist', device: 'secret-device-id' };
+  callbacks.onWillAppear({ action, payload: {} }); await flush();
+  client.snapshotError = Object.assign(new Error('Bearer private-token C:\\Users\\PrivatePerson'), { killed: true });
+  await api.refresh();
+  await api.inspectorRequest({ action, payload: { type: 'diagnostics', requestId: 'error-diagnostic' } });
+  const report = messages.at(-1).report;
+  assert.ok(report.lastSuccess); assert.equal(report.recentErrors.at(-1).category, 'timeout');
+  assert.doesNotMatch(JSON.stringify(report), /Private|private-token|secret-device-id|Bearer/);
+  api.stop();
+});
+
+test('diagnostic replies respect selection changes and do not supersede status requests', async () => {
+  const { api, client, messages, select } = await runtime();
+  const action = key('playlist'), other = key('playlist', 'other'); select(action);
+  const snapshot = deferred(), version = deferred();
+  client.snapshot = () => snapshot.promise;
+  client.executable = async () => '/private/spotifast.exe';
+  client.run = () => version.promise;
+  const status = api.inspectorRequest({ action, payload: { type: 'status', requestId: 'status' } });
+  const diagnostic = api.inspectorRequest({ action, payload: { type: 'diagnostics', requestId: 'diagnostic' } });
+  snapshot.resolve(client.data); await status;
+  assert.equal(messages.at(-1).requestId, 'status');
+  select(other); version.resolve('spotifast 0.13.3'); await diagnostic;
+  assert.equal(messages.length, 1, 'An old diagnostic cannot appear in another key’s settings');
+  api.stop();
+});

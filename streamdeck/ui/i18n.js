@@ -5,6 +5,16 @@
 })(typeof globalThis !== 'undefined' ? globalThis : this, function () {
   const messages = {
     en: {
+      diagnosticsTitle: 'Local diagnostic', diagnosticsRefresh: 'Preview diagnostic', diagnosticsCopy: 'Copy diagnostic',
+      diagnosticsPrivacy: 'Preview before copying. No account details, paths, track or device identifiers are included. Nothing is sent automatically.',
+      diagnosticsReady: 'Review the diagnostic below before sharing it.', diagnosticsCopied: 'Diagnostic copied.',
+      diagnosticsCopyManual: 'Copy is unavailable here. The diagnostic is selected; press Ctrl+C to copy it.',
+      diagnosticNotSignedIn: 'Spotifast is not signed in.', diagnosticNoPlayback: 'No playable track is currently available.', diagnosticDeviceUnavailable: 'The playback device is unavailable.',
+      diagnosticActionCheckPath: 'Check the Spotifast location in settings and make sure it is installed.',
+      diagnosticActionRetry: 'Try again. If it repeats, reopen Spotifast and check the connection.',
+      diagnosticActionOpen: 'Open Spotifast, then check the connection.', diagnosticActionSignIn: 'Sign in to Spotify inside Spotifast.',
+      diagnosticActionPlay: 'Choose and play a track in Spotifast.', diagnosticActionDevice: 'Open Spotify or Spotifast on the intended device, then refresh the device list.',
+      diagnosticActionSettings: 'Review this button’s settings and update Spotifast if necessary.',
       language: 'Language', automatic: 'Follow Stream Deck', checking: 'Checking connection…',
       commandQueueBusy: 'Too many commands are waiting. Try again.', commandExpired: 'This command waited too long. Try again.',
       unsupportedMultiAction: 'This action cannot set an explicit state in a Multi Action.', connectionLost: 'Connection to Stream Deck was lost. Reopen these settings.',
@@ -42,6 +52,16 @@
       dialTooltip: 'Turn: volume. Press: mute. Tap: play/pause.', rotate: 'Adjust volume', push: 'Mute', touch: 'Play / Pause'
     },
     fr: {
+      diagnosticsTitle: 'Diagnostic local', diagnosticsRefresh: 'Afficher le diagnostic', diagnosticsCopy: 'Copier le diagnostic',
+      diagnosticsPrivacy: 'Vérifie avant de copier. Aucun compte, chemin, identifiant de morceau ou d’appareil n’est inclus. Rien n’est envoyé automatiquement.',
+      diagnosticsReady: 'Vérifie le diagnostic ci-dessous avant de le partager.', diagnosticsCopied: 'Diagnostic copié.',
+      diagnosticsCopyManual: 'La copie est indisponible ici. Le diagnostic est sélectionné ; appuie sur Ctrl+C pour le copier.',
+      diagnosticNotSignedIn: 'Spotifast n’est pas connecté à un compte.', diagnosticNoPlayback: 'Aucun morceau lisible n’est disponible actuellement.', diagnosticDeviceUnavailable: 'L’appareil de lecture est indisponible.',
+      diagnosticActionCheckPath: 'Vérifie l’emplacement de Spotifast dans les réglages et assure-toi qu’il est installé.',
+      diagnosticActionRetry: 'Réessaie. Si le problème persiste, rouvre Spotifast et vérifie la connexion.',
+      diagnosticActionOpen: 'Ouvre Spotifast, puis vérifie la connexion.', diagnosticActionSignIn: 'Connecte-toi à Spotify dans Spotifast.',
+      diagnosticActionPlay: 'Choisis et lance un morceau dans Spotifast.', diagnosticActionDevice: 'Ouvre Spotify ou Spotifast sur l’appareil souhaité, puis actualise la liste des appareils.',
+      diagnosticActionSettings: 'Vérifie les réglages de cette touche et mets Spotifast à jour si nécessaire.',
       language: 'Langue', automatic: 'Suivre Stream Deck', checking: 'Vérification de la connexion…',
       commandQueueBusy: 'Trop de commandes sont en attente. Réessaie.', commandExpired: 'Cette commande a attendu trop longtemps. Réessaie.',
       unsupportedMultiAction: 'Cette action ne peut pas définir un état explicite dans une multi-action.', connectionLost: 'La connexion à Stream Deck est perdue. Rouvre ces réglages.',

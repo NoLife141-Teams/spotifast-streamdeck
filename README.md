@@ -16,7 +16,7 @@ Il contrôle **Spotifast**, qui doit être installé et connecté à Spotify. Ce
 2. Installer Stream Deck 7.1 ou plus récent. Le plugin utilise le SDK Elgato 3.x et nécessite cette version pour ses réglages.
 3. Télécharger le fichier .streamDeckPlugin dans les [versions GitHub](https://github.com/NoLife141-Teams/spotifast-streamdeck/releases), puis ouvrir le fichier.
 4. Ajouter les actions Spotifast aux touches.
-5. Dans **Lancer une playlist**, coller un lien Spotify ou une URI `spotify:playlist:…`. Les liens d’album et de morceau sont également acceptés. Les réglages indiquent immédiatement si le format est reconnu; une saisie invalide est signalée sous le champ. Cette vérification ne confirme pas l’existence du contenu ni sa disponibilité sur ton compte.
+5. Dans **Lire un lien Spotify**, coller un lien Spotify ou une URI `spotify:playlist:…`. Les liens de playlist, d’album, de morceau, d’artiste et d’émission sont reconnus. Un nom facultatif personnalise la touche. Les réglages indiquent immédiatement si le format est reconnu; une saisie invalide est signalée sous le champ. Cette vérification ne confirme pas l’existence du contenu ni sa disponibilité sur ton compte.
 
 La fenêtre de réglages suit la langue de Stream Deck. Le choix **Langue → English / Français** change les réglages et les messages du plugin pour toutes les touches. Les noms de la liste d’actions suivent la langue de Stream Deck.
 
@@ -29,6 +29,8 @@ Les multi-actions peuvent définir explicitement Lecture/Pause avec la touche ic
 Les lectures de statut sont espacées de 1,5 seconde après la fin de la lecture précédente, sans rattrapage si Spotifast ralentit. Après un échec, le plugin attend 3, 6, 15 puis 30 secondes entre les tentatives. Une commande, un changement de configuration ou un réveil relance la vérification sans attendre ce délai; après une commande réussie, le statut est vérifié après 250 ms. Les lectures CLI ont un délai d’exécution d’une seconde, les commandes d’écriture gardent cinq secondes et restent sérialisées. Aucune lecture automatique n’est lancée sans touche Spotifast visible.
 
 ### État de la version
+
+La version **0.3.0 bêta** regroupe les huit lots des PR #18 à #25 : volume absolu, ordre des multi-actions, avance/retour et redémarrage, diagnostics locaux, noms de raccourcis, aperçu des réglages, temps écoulé/progression facultatifs et sélection explicite de l’appareil de lecture. Les identifiants, réglages et affichages par défaut existants sont conservés. Les **225 tests automatisés** et la vérification de l’installateur couvrent Windows avec Node 20 et 22. Les essais physiques de cette version, notamment Stream Deck +, restent **non réalisés**. Voir les [notes de version bilingues](releases/v0.3.0.md) et le [guide des nouvelles commandes](docs/playback-commands.md).
 
 La version **0.2.7 bêta** conserve l’ordre des commandes de sourdine et de volume, réduit les calculs de rendu des longues légendes et évite ceux des légendes masquées. Les réglages restent réactifs lors des changements rapides de touche. Les correctifs passent 130 tests automatisés sur Windows avec Node 20 et 22. Aucun nouveau test sur matériel physique n’a été réalisé pour ces correctifs; les molettes Stream Deck + restent à tester. Les réglages et les identifiants des actions sont conservés.
 
@@ -64,7 +66,7 @@ It controls **Spotifast**, which must be installed and signed in to Spotify. It 
 2. Install Stream Deck 7.1 or newer. The plugin uses Elgato SDK 3.x and requires this version for its settings.
 3. Download the .streamDeckPlugin installer from [GitHub Releases](https://github.com/NoLife141-Teams/spotifast-streamdeck/releases), then open it.
 4. Add Spotifast actions to your keys.
-5. For **Play a playlist**, paste a Spotify link or a `spotify:playlist:…` URI. Album and track links are also supported. Settings immediately show whether the format is recognized; invalid input is flagged below the field. This check does not confirm that the content exists or is available to your account.
+5. For **Play Spotify link**, paste a Spotify link or a `spotify:playlist:…` URI. Playlist, album, track, artist and show links are recognized. An optional name customizes the key. Settings immediately show whether the format is recognized; invalid input is flagged below the field. This check does not confirm that the content exists or is available to your account.
 
 Settings follow the Stream Deck language. **Language → English / Français** changes the settings and runtime messages for all plugin buttons. Names in the action list follow the Stream Deck language.
 
@@ -77,6 +79,8 @@ Multi Actions can explicitly set Play/Pause with either the icon key or the artw
 Status reads wait 1.5 seconds after the previous read completes, without catch-up polling when Spotifast slows down. After failures, retries wait 3, 6, 15 and then 30 seconds. A command, configuration change or wake-up requests a fresh check without waiting for that delay; successful commands refresh status after 250 ms. Status CLI processes have a one-second execution timeout; writes retain five seconds and remain serialized. No automatic status reads run without a visible Spotifast action.
 
 ### Version status
+
+Version **0.3.0 beta** combines all eight lots from PRs #18–#25: absolute volume, ordered Multi Actions, seek/restart, local diagnostics, shortcut names, settings preview, optional elapsed/progress overlays and explicit playback-device selection. Existing identifiers, settings and default appearance are preserved. **225 automated tests** and exact installer verification cover Windows Node 20 and 22. Physical testing of this version, including Stream Deck +, remains **not performed**. See the [bilingual release notes](releases/v0.3.0.md) and [additional playback commands](docs/playback-commands.md).
 
 Version **0.2.7 beta** preserves mute and volume command order, reduces rendering work for long captions and skips hidden-caption shaping. Settings remain responsive during rapid key selection changes. The fixes pass 130 automated tests on Windows with Node 20 and 22. These fixes have not received new physical-device testing; Stream Deck + dials still need hardware testing. Existing settings and action identifiers are preserved.
 
@@ -162,7 +166,7 @@ Pour publier une version, compiler, tester, valider et empaqueter le checkout du
 Before publishing, verify the release tag, matching versions, MIT license and clean checkout. CI also runs this check for version tags:
 
 ```sh
-npm run release:check -- v0.2.7
+npm run release:check -- v0.3.0
 ```
 
 ### Candidate validation / Validation des versions candidates

@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { mkdtemp, mkdir, writeFile, rm } from 'node:fs/promises';
+import { watch, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { ZipWriter, Uint8ArrayReader, Uint8ArrayWriter } from '@zip.js/zip.js';
@@ -29,6 +30,36 @@ test('installer must exactly contain tested files and license without omitted or
 import { validateReleaseNotes, prepareRelease } from '../scripts/prepare-release.mjs';
 import { createHash } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
+test('installer verification hashes the inspected bytes when the archive is replaced during extraction', async () => {
+  const root = await mkdtemp(path.join(tmpdir(), 'spotifast-verify-replacement-'));
+  let watcher;
+  try {
+    const source = path.join(root, 'source'), destination = path.join(root, 'out'), archive = path.join(root, 'installer.zip');
+    await mkdir(source); await mkdir(destination);
+    await writeFile(path.join(source, 'LICENSE'), 'MIT');
+    const writer = new ZipWriter(new Uint8ArrayWriter());
+    await writer.add(prefix + 'LICENSE', new Uint8ArrayReader(Buffer.from('MIT')));
+    // Leave asynchronous extraction work after the first file so the filesystem
+    // notification can replace the archive before verification finishes.
+    for (let index = 0; index < 32; index++) {
+      const name = 'payload-' + index, data = Buffer.alloc(4096, index);
+      await writeFile(path.join(source, name), data);
+      await writer.add(prefix + name, new Uint8ArrayReader(data));
+    }
+    const original = Buffer.from(await writer.close()), replacement = Buffer.from('unverified replacement');
+    await writeFile(archive, original);
+    let replaced = false;
+    watcher = watch(destination, (_event, filename) => {
+      if (filename === 'LICENSE' && !replaced) { replaced = true; writeFileSync(archive, replacement); }
+    });
+    const report = await verifyArchive(archive, source, destination);
+    assert.equal(replaced, true, 'The archive must change during verification');
+    assert.equal(await readFile(path.join(destination, 'LICENSE'), 'utf8'), 'MIT');
+    assert.equal(report.sha256, createHash('sha256').update(original).digest('hex'));
+    assert.notEqual(report.sha256, createHash('sha256').update(await readFile(archive)).digest('hex'));
+  } finally { watcher?.close(); await rm(root, { recursive: true, force: true }); }
+});
+
 test('release notes require both languages and no unfinished release blockers', () => {
   assert.equal(validateReleaseNotes('## English\nText\n## Français\nTexte'), '## English\nText\n## Français\nTexte');
   for (const text of ['## English\nOnly', '## English\nTODO\n## Français\nTexte']) assert.throws(() => validateReleaseNotes(text));

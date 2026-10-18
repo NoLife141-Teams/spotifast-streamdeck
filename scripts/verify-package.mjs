@@ -27,7 +27,8 @@ async function expectedFiles(directory, prefix = '') {
   return files.sort();
 }
 export async function verifyArchive(archive, source, destination) {
-  const reader = new ZipReader(new Uint8ArrayReader(await readFile(archive)));
+  const bytes = await readFile(archive);
+  const reader = new ZipReader(new Uint8ArrayReader(bytes));
   const seen = new Set();
   try {
     for (const entry of await reader.getEntries()) {
@@ -46,7 +47,7 @@ export async function verifyArchive(archive, source, destination) {
       await mkdir(path.dirname(target), { recursive: true }); await writeFile(target, data);
     }
     assert.deepEqual([...seen].sort(), (await expectedFiles(source)).map(name => name.toLowerCase()).sort(), 'Package omitted files');
-    return { files: seen.size, sha256: hash(await readFile(archive)) };
+    return { files: seen.size, sha256: hash(bytes) };
   } finally { await reader.close(); }
 }
 export async function verifyPackage(root = process.cwd()) {

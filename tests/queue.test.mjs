@@ -194,3 +194,37 @@ test('Pause still overtakes the ordered mute-volume lane', async () => {
   gate.resolve(); await Promise.all([active, ...pending]);
   assert.deepEqual(calls, [['now-playing', '--raw'], ['pause'], ['volume-up', '5'], ['mute'], ['volume-up', '5']]);
 });
+
+test('absolute volume clamps/rounds finite values and rejects non-finite input via its safe default', () => {
+  for (const [value, expected] of [[0, '0'], [100, '100'], [25.6, '26'], [-8, '0'], [101, '100'], [NaN, '50'], [Infinity, '50'], ['', '50'], [undefined, '50']]) {
+    assert.deepEqual(commandFor('setvolume', { volumePercent: value }), ['volume', expected]);
+    assert.deepEqual(commandFor('setvolume', { volumePercent: value }, undefined, 0), ['volume', expected]);
+  }
+});
+
+test('absolute, mute and relative volume retain FIFO boundaries without dropping an absolute set', async () => {
+  const { instance, calls, gates } = client(); const gate = deferred(); gates.push(gate);
+  const active = instance.run(['now-playing', '--raw']); await flush();
+  const inputs = [['volume-up', '5'], ['volume', '25'], ['mute'], ['volume', '100'], ['volume-down', '5']];
+  const pending = inputs.map(args => instance.run(args)); gate.resolve();
+  await Promise.all([active, ...pending]); assert.deepEqual(calls.slice(1), inputs);
+});
+
+test('Multi Action commands form FIFO barriers across volume, transport and interactive work', async () => {
+  const { instance, calls, gates } = client(); const gate = deferred(); gates.push(gate);
+  const active = instance.run(['now-playing', '--raw']); await flush();
+  const before = instance.run(['volume-up', '5']);
+  const inputs = [['volume', '25'], ['play'], ['volume-up', '5'], ['volume-up', '5'], ['mute'], ['pause']];
+  const macro = inputs.map(args => instance.run(args, { ordered: true }));
+  const after = instance.run(['next']); gate.resolve();
+  await Promise.all([active, before, ...macro, after]);
+  assert.deepEqual(calls.slice(1), [['volume-up', '5'], ...inputs, ['next']]);
+});
+
+test('a full queue never silently evicts an ordered macro command for interactive transport', async () => {
+  const queue = new CommandQueue({ maxPending: 1 }), gate = deferred();
+  const active = queue.run(() => gate.promise); await flush();
+  const macro = queue.run(() => 'saved', { ordered: true, priority: 0 });
+  await assert.rejects(queue.run(() => 'pause', { priority: 20 }), error => error.messageKey === 'commandQueueBusy');
+  gate.resolve(); await active; assert.equal(await macro, 'saved');
+});

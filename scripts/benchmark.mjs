@@ -12,8 +12,8 @@ export function distribution(values) {
 }
 
 // Real runtime and caption renderer; fake transport/player. Never invokes Spotifast.
-export async function benchmarkCase({ state = 'playing', keys = 1, samples = 20 } = {}) {
-  if (!['playing', 'paused', 'offline'].includes(state) || !Number.isInteger(keys) || keys < 1 || keys > 64 || !Number.isInteger(samples) || samples < 1 || samples > 10000) throw new Error('Invalid benchmark case');
+export async function benchmarkCase({ state = 'playing', keys = 1, samples = 20, minDurationMs = 0 } = {}) {
+  if (!['playing', 'paused', 'offline'].includes(state) || !Number.isInteger(keys) || keys < 1 || keys > 64 || !Number.isInteger(samples) || samples < 1 || samples > 10000 || !Number.isFinite(minDurationMs) || minDurationMs < 0 || minDurationMs > 60000) throw new Error('Invalid benchmark case');
   let clock = 0, reads = 0, writes = 0, bytes = 0, commands = 0, firstPositionMs, lastPositionMs;
   const callbacks = {}, noop = () => {}, timers = { setTimeout: noop, clearTimeout: noop, setInterval: noop, clearInterval: noop };
   const client = { configure: noop, async run() { commands++; }, async snapshot() {
@@ -39,7 +39,7 @@ export async function benchmarkCase({ state = 'playing', keys = 1, samples = 20 
   let rssPeak = rssStart;
   const delay = monitorEventLoopDelay({ resolution: 10 }); delay.enable();
   try {
-    for (let index = 0; index < samples; index++) {
+    for (let index = 0; index < samples || performance.now() - start < minDurationMs; index++) {
       clock += 100;
       let before = performance.now(); await runtime.refresh(); refreshMs.push(performance.now() - before);
       before = performance.now(); await runtime.animate(); animationMs.push(performance.now() - before);
@@ -53,16 +53,17 @@ export async function benchmarkCase({ state = 'playing', keys = 1, samples = 20 
     }
   } finally { runtime.stop(); delay.disable(); }
   const elapsedMs = performance.now() - start, cpu = process.cpuUsage(cpuStart);
-  return { mode: 'synthetic-runtime-no-cli-no-hardware', state, keys, samples, elapsedMs,
+  return { mode: 'synthetic-runtime-no-cli-no-hardware', state, keys, samples: refreshMs.length, elapsedMs,
     cpuMs: (cpu.user + cpu.system) / 1000, cpuPercentOneCore: (cpu.user + cpu.system) / 10 / elapsedMs,
     rssStartBytes: rssStart, rssPeakBytes: rssPeak, refreshMs: distribution(refreshMs), animationMs: distribution(animationMs),
     simulatedCommandToRefreshMs: distribution(commandToRefreshMs), eventLoopP95Ms: delay.count ? delay.percentile(95) / 1e6 : null,
     syntheticPositions: { firstMs: firstPositionMs ?? null, lastMs: lastPositionMs ?? null }, snapshotReads: reads, commands, outputWrites: writes, outputBytes: bytes };
 }
 
-export async function runBaseline({ samples = 20 } = {}) {
+export async function runBaseline({ samples = 20, minDurationMs = 1000 } = {}) {
   const results = [];
-  for (const state of ['playing', 'paused', 'offline']) for (const keys of [1, 4, 16]) results.push(await benchmarkCase({ state, keys, samples }));
+  // Windows process CPU counters have a coarser resolution than a few refreshes.
+  for (const state of ['playing', 'paused', 'offline']) for (const keys of [1, 4, 16]) results.push(await benchmarkCase({ state, keys, samples, minDurationMs }));
   return { schemaVersion: 1, measuredAt: new Date().toISOString(), environment: { platform: process.platform, arch: process.arch, node: process.version, logicalCpus: cpus().length }, limitation: 'Synthetic player and SDK transport; excludes process start, network, real Stream Deck latency and hardware resource usage. No performance pass/fail thresholds.', results };
 }
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {

@@ -18,7 +18,7 @@
       language: 'Language', automatic: 'Follow Stream Deck', checking: 'Checking connection…',
       commandQueueBusy: 'Too many commands are waiting. Try again.', commandExpired: 'This command waited too long. Try again.',
       unsupportedMultiAction: 'This action cannot set an explicit state in a Multi Action.', connectionLost: 'Connection to Stream Deck was lost. Reopen these settings.',
-      open: 'Open Spotifast', check: 'Check connection', playlistLabel: 'Playlist, album or track link',
+      open: 'Open Spotifast', check: 'Check connection', playlistLabel: 'Playlist, album, track, artist or show link',
       playlistHint: 'Copy a Spotify link or use a spotify:playlist:… URI.', volumeLabel: 'Volume step (%)',
       showText: 'Show the title and artist on the artwork', executableLabel: 'Spotifast location (optional)',
       captionLayout: 'Text layout', compactCaption: 'One line: title • artist', twoLineCaption: 'Two lines: title and artist',
@@ -35,7 +35,9 @@
       noTrack: 'No\ntrack', volumeTitle: 'Spotifast volume', unavailable: 'Spotifast is unavailable. Open the app.',
       unknownResponse: 'Unrecognized Spotifast response.', incompleteResponse: 'Incomplete Spotifast response.',
       invalidUri: 'Add a valid Spotify link or URI in this button’s settings.', unknownRotation: 'Unrecognized dial rotation.',
-      validUri: 'Spotify link format recognized.',
+      validUri: 'Spotify {type} link format recognized.',
+      linkType_playlist: 'playlist', linkType_album: 'album', linkType_track: 'track', linkType_artist: 'artist', linkType_show: 'show',
+      shortcutName: 'Button name (optional)', shortcutNameHint: 'Shown on this key only. Leave empty for the usual title. Up to 40 characters.',
       unknownAction: 'Unrecognized action.', executableMissing: 'Spotifast was not found. Check its location in the plugin settings.',
       commandFailed: 'The command failed. Check that Spotifast is open and signed in.', commandTimeout: 'Spotifast did not respond. Try again.',
       artworkUnavailable: 'Artwork is unavailable.', artworkFormat: 'Unsupported artwork format.', artworkTooLarge: 'Artwork is too large.',
@@ -48,7 +50,7 @@
       action_seekback: 'Seek backward', action_seekforward: 'Seek forward', action_restart: 'Restart track',
       absoluteVolumeLabel: 'Set volume (%)', absoluteVolumeHint: 'Sets exactly this volume, including in Multi Actions. 0 is silent.',
       action_setvolume: 'Set volume', action_mute: 'Mute', action_shuffle: 'Shuffle', action_repeat: 'Repeat', action_like: 'Favorite',
-      action_playlist: 'Play a playlist', action_open: 'Open Spotifast', action_volume: 'Volume (dial)',
+      action_playlist: 'Play Spotify link', action_open: 'Open Spotifast', action_volume: 'Volume (dial)',
       dialTooltip: 'Turn: volume. Press: mute. Tap: play/pause.', rotate: 'Adjust volume', push: 'Mute', touch: 'Play / Pause'
     },
     fr: {
@@ -65,7 +67,7 @@
       language: 'Langue', automatic: 'Suivre Stream Deck', checking: 'Vérification de la connexion…',
       commandQueueBusy: 'Trop de commandes sont en attente. Réessaie.', commandExpired: 'Cette commande a attendu trop longtemps. Réessaie.',
       unsupportedMultiAction: 'Cette action ne peut pas définir un état explicite dans une multi-action.', connectionLost: 'La connexion à Stream Deck est perdue. Rouvre ces réglages.',
-      open: 'Ouvrir Spotifast', check: 'Vérifier la connexion', playlistLabel: 'Lien de playlist, album ou morceau',
+      open: 'Ouvrir Spotifast', check: 'Vérifier la connexion', playlistLabel: 'Lien de playlist, album, morceau, artiste ou émission',
       playlistHint: 'Copie un lien Spotify ou utilise une URI spotify:playlist:…', volumeLabel: 'Variation du volume (%)',
       showText: 'Afficher le titre et l’artiste sur la pochette', executableLabel: 'Emplacement de Spotifast (facultatif)',
       captionLayout: 'Disposition du texte', compactCaption: 'Une ligne : titre • artiste', twoLineCaption: 'Deux lignes : titre et artiste',
@@ -82,7 +84,9 @@
       noTrack: 'Aucun\nmorceau', volumeTitle: 'Volume Spotifast', unavailable: 'Spotifast indisponible. Ouvre l’application.',
       unknownResponse: 'Réponse Spotifast inconnue.', incompleteResponse: 'Réponse Spotifast incomplète.',
       invalidUri: 'Ajoute un lien ou une URI Spotify valide dans les réglages de ce bouton.', unknownRotation: 'Rotation inconnue.',
-      validUri: 'Format du lien Spotify reconnu.',
+      validUri: 'Format du lien Spotify reconnu : {type}.',
+      linkType_playlist: 'playlist', linkType_album: 'album', linkType_track: 'morceau', linkType_artist: 'artiste', linkType_show: 'émission',
+      shortcutName: 'Nom de la touche (facultatif)', shortcutNameHint: 'Affiché uniquement sur cette touche. Laisse vide pour le titre habituel. Jusqu’à 40 caractères.',
       unknownAction: 'Action inconnue.', executableMissing: 'Spotifast introuvable. Vérifie son emplacement dans les réglages du plugin.',
       commandFailed: 'La commande a échoué. Vérifie que Spotifast est ouvert et connecté.', commandTimeout: 'Spotifast ne répond pas. Réessaie.',
       artworkUnavailable: 'Pochette indisponible.', artworkFormat: 'Format de pochette non pris en charge.', artworkTooLarge: 'Pochette trop grande.',
@@ -95,7 +99,7 @@
       action_seekback: 'Reculer', action_seekforward: 'Avancer', action_restart: 'Recommencer le morceau',
       absoluteVolumeLabel: 'Volume cible (%)', absoluteVolumeHint: 'Définit ce volume exact, y compris dans les multi-actions. 0 coupe le son.',
       action_setvolume: 'Définir le volume', action_mute: 'Sourdine', action_shuffle: 'Lecture aléatoire', action_repeat: 'Répétition', action_like: 'Favori',
-      action_playlist: 'Lancer une playlist', action_open: 'Ouvrir Spotifast', action_volume: 'Volume (molette)',
+      action_playlist: 'Lire un lien Spotify', action_open: 'Ouvrir Spotifast', action_volume: 'Volume (molette)',
       dialTooltip: 'Tourner : volume. Appuyer : sourdine. Toucher : lecture/pause.', rotate: 'Régler le volume', push: 'Sourdine', touch: 'Lecture / Pause'
     }
   };

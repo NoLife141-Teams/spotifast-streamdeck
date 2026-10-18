@@ -14,5 +14,13 @@
     } catch {}
     return undefined;
   }
-  return { spotifyUri };
+  function spotifyType(value) { return spotifyUri(value)?.split(':')[1]; }
+  function shortcutName(value) {
+    const text = String(value ?? '').normalize('NFC').replace(/[\u0000-\u001f\u007f]/g, ' ').replace(/\s+/g, ' ').trim();
+    const segments = new Intl.Segmenter(undefined, { granularity: 'grapheme' });
+    let result = '', count = 0;
+    for (const { segment } of segments.segment(text)) { if (count++ === 40) break; result += segment; }
+    return result;
+  }
+  return { spotifyUri, spotifyType, shortcutName };
 });

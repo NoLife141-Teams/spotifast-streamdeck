@@ -1,7 +1,7 @@
 let socket, uuid, actionId, settings = {}, globalSettings = {}, hostLanguage = 'en';
 let globalsReady = false, socketFailed = false, globalPending = {}, localPending = {}, requestSequence = 0, activeRequestId;
 let translate = SpotifastI18n.createTranslator('en');
-let status = { key: 'checking' };
+let status = { key: 'checking' }, diagnosticRequestId, diagnosticReport;
 const element = id => document.getElementById(id);
 const checkboxes = ['showText', 'scrollText', 'showRemaining'];
 const connected = () => !socketFailed && socket?.readyState === WebSocket.OPEN;
@@ -19,8 +19,25 @@ function plugin(type) {
 }
 function controls() {
   const globalDisabled = !connected() || !globalsReady || Object.keys(globalPending).length > 0;
-  for (const id of ['language', 'exe', 'check', 'open']) element(id).disabled = globalDisabled;
+  for (const id of ['language', 'exe', 'check', 'open', 'diagnose']) element(id).disabled = globalDisabled;
   for (const id of ['uri', 'step', 'volumePercent', 'seekSeconds', 'captionLayout', ...checkboxes]) element(id).disabled = !connected() || (['scrollText', 'captionLayout'].includes(id) && settings.showText === false);
+}
+function renderDiagnostic() {
+  element('diagnosticPreview').hidden = !diagnosticReport;
+  element('copyDiagnostic').disabled = !diagnosticReport;
+  if (!diagnosticReport) return;
+  // The runtime emits only allowlisted diagnostic fields, never raw logs.
+  const report = { ...diagnosticReport, status: diagnosticReport.status && { ...diagnosticReport.status, message: translate(diagnosticReport.status.messageKey), action: translate(diagnosticReport.status.actionKey) }, recentErrors: diagnosticReport.recentErrors.map(error => ({
+    ...error, message: translate(error.messageKey), action: translate(error.actionKey)
+  })) };
+  element('diagnosticPreview').value = JSON.stringify(report, null, 2);
+  element('diagnosticStatus').textContent = translate('diagnosticsReady');
+}
+function requestDiagnostic() {
+  if (!globalsReady || Object.keys(globalPending).length || !connected()) return;
+  diagnosticRequestId = uuid + ':diagnostics:' + (++requestSequence);
+  element('diagnosticStatus').textContent = translate('checking');
+  send('sendToPlugin', { type: 'diagnostics', requestId: diagnosticRequestId });
 }
 function renderStatus() {
   element('status').textContent = status.key ? translate(status.key, { title: status.trackTitle }) : status.message;
@@ -45,6 +62,7 @@ function renderLanguage() {
   element('help').textContent = translate(id === 'volume' ? 'dialHelp' : id === 'nowplaying' ? 'artworkHelp' : id === 'like' ? 'favoriteHelp' : 'help');
   renderStatus();
   renderUriValidation();
+  renderDiagnostic();
 }
 function normalizeStep(value) {
   const number = String(value).trim() === '' ? 5 : Number(value);
@@ -118,12 +136,31 @@ window.connectElgatoStreamDeckSocket = (port, propertyInspectorUUID, registerEve
       renderLocalSettings();
       controls();
     }
+    if (message.event === 'sendToPropertyInspector' && message.payload?.type === 'diagnostics') {
+      if (message.payload.requestId !== diagnosticRequestId) return;
+      diagnosticReport = message.payload.report;
+      renderDiagnostic();
+    }
     if (message.event === 'sendToPropertyInspector' && message.payload?.type === 'status') {
       if (message.payload.requestId !== undefined && message.payload.requestId !== activeRequestId) return;
       status = { key: message.payload.messageKey, trackTitle: message.payload.trackTitle, message: message.payload.message, online: message.payload.online };
       renderStatus();
     }
   };
+};
+element('diagnose').onclick = requestDiagnostic;
+element('copyDiagnostic').onclick = async () => {
+  if (!diagnosticReport) return;
+  const text = element('diagnosticPreview').value;
+  try {
+    if (!globalThis.navigator?.clipboard?.writeText) throw new Error('Clipboard unavailable');
+    await globalThis.navigator.clipboard.writeText(text);
+    element('diagnosticStatus').textContent = translate('diagnosticsCopied');
+  } catch {
+    element('diagnosticPreview').focus();
+    element('diagnosticPreview').select();
+    element('diagnosticStatus').textContent = translate('diagnosticsCopyManual');
+  }
 };
 element('open').onclick = () => plugin('open');
 element('check').onclick = () => plugin('status');

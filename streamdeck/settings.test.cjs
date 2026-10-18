@@ -6,11 +6,11 @@ const vm = require('node:vm');
 const translations = require('./ui/i18n.js');
 const spotifyLinks = require('./ui/spotify.js');
 const source = fs.readFileSync(process.argv[2] || path.join(__dirname, 'ui/settings.js'), 'utf8');
-function inspector({ action = 'playlist', settings = {}, globals = {}, ready = true } = {}) {
-  const elements = new Map(); const element = id => { if (!elements.has(id)) elements.set(id, { value: '', checked: false, hidden: false, disabled: false, style: {}, attributes: {}, setAttribute(name, value) { this.attributes[name] = value; } }); return elements.get(id); };
+function inspector({ action = 'playlist', settings = {}, globals = {}, ready = true, clipboard } = {}) {
+  const elements = new Map(); const element = id => { if (!elements.has(id)) elements.set(id, { value: '', checked: false, hidden: false, disabled: false, style: {}, attributes: {}, setAttribute(name, value) { this.attributes[name] = value; }, focus() { this.focused = true; }, select() { this.selected = true; } }); return elements.get(id); };
   class Socket { static OPEN = 1; constructor() { this.readyState = 0; this.messages = []; Socket.last = this; } send(text) { this.messages.push(JSON.parse(text)); } }
   const window = {}, document = { activeElement: null, documentElement: {}, getElementById: element, querySelectorAll: () => [] };
-  vm.runInNewContext(source, { window, document, WebSocket: Socket, SpotifastI18n: translations, SpotifastSpotify: spotifyLinks });
+  vm.runInNewContext(source, { window, document, WebSocket: Socket, SpotifastI18n: translations, SpotifastSpotify: spotifyLinks, navigator: { clipboard } });
   window.connectElgatoStreamDeckSocket(28196, 'live-inspector', 'registerPropertyInspector', '{}', JSON.stringify({ action: 'rocks.spotifast.streamdeck.' + action, context: 'different-instance', payload: { settings: { uri: 'spotify:playlist:Old', step: 5, showText: true, preserved: 'keep', ...settings } } }));
   const socket = Socket.last; socket.readyState = Socket.OPEN; socket.onopen();
   const receive = (event, payload) => socket.onmessage({ data: JSON.stringify({ event, payload }) });
@@ -196,4 +196,30 @@ test('seek settings are isolated, normalized, and preserve profile fields', () =
     assert.equal(sent('setSettings').at(-1).payload.preserved, 'keep');
   }
   assert.equal(inspector({ action: 'restart' }).element('seek').hidden, true);
+});
+
+test('diagnostics preview is explicit and copy uses only the exact displayed report', async () => {
+  const copied = [], { element, receive, sent } = inspector({ clipboard: { async writeText(value) { copied.push(value); } } });
+  assert.equal(sent('sendToPlugin').some(message => message.payload.type === 'diagnostics'), false);
+  assert.equal(element('copyDiagnostic').disabled, true);
+  element('diagnose').onclick(); const requestId = sent('sendToPlugin').at(-1).payload.requestId;
+  const report = { pluginVersion: '0.2.7.0', status: { category: 'offline', messageKey: 'unavailable', actionKey: 'diagnosticActionOpen' }, recentErrors: [] };
+  receive('sendToPropertyInspector', { type: 'diagnostics', requestId: 'old', report });
+  assert.equal(element('diagnosticPreview').hidden, true);
+  receive('sendToPropertyInspector', { type: 'diagnostics', requestId, report });
+  assert.equal(element('diagnosticPreview').hidden, false); assert.equal(element('copyDiagnostic').disabled, false);
+  assert.match(element('diagnosticPreview').value, /Open Spotifast, then check/);
+  await element('copyDiagnostic').onclick();
+  assert.deepEqual(copied, [element('diagnosticPreview').value]); assert.equal(element('diagnosticStatus').textContent, 'Diagnostic copied.');
+  assert.equal(sent('setSettings').length, 0); assert.equal(sent('setGlobalSettings').length, 0);
+});
+
+test('diagnostics have a manual copy fallback and keep status replies independent', async () => {
+  const { element, receive, sent } = inspector(); const statusId = sent('sendToPlugin').at(-1).payload.requestId;
+  element('diagnose').onclick(); const requestId = sent('sendToPlugin').at(-1).payload.requestId;
+  receive('sendToPropertyInspector', { type: 'diagnostics', requestId, report: { recentErrors: [] } });
+  receive('sendToPropertyInspector', { type: 'status', requestId: statusId, messageKey: 'connected', online: true });
+  assert.match(element('status').textContent, /Choose a track/);
+  await element('copyDiagnostic').onclick();
+  assert.equal(element('diagnosticPreview').selected, true); assert.match(element('diagnosticStatus').textContent, /Ctrl\+C/);
 });

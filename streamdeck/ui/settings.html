@@ -5,7 +5,7 @@
 <style>
 body{background:#2d2d2d;color:#eee;font:12px Arial,sans-serif;margin:16px}
 h2{font-size:17px;color:#a3e635;margin:0 0 12px}label{display:block;margin:14px 0 5px}
-input,select{box-sizing:border-box;width:100%;padding:8px;background:#202020;border:1px solid #555;border-radius:5px;color:#fff}
+input,select,textarea{box-sizing:border-box;width:100%;padding:8px;background:#202020;border:1px solid #555;border-radius:5px;color:#fff}
 input[type=checkbox]{width:auto}button{padding:8px 12px;margin:12px 5px 0 0;color:#fff;background:#444;border:1px solid #666;border-radius:5px;cursor:pointer}
 p{color:#ccc;line-height:1.5}#status{padding:10px;background:#222;border-left:3px solid #999;border-radius:3px;overflow-wrap:anywhere}
 small{display:block;color:#bbb;margin-top:5px;line-height:1.4}[hidden]{display:none!important}
@@ -28,6 +28,11 @@ small{display:block;color:#bbb;margin-top:5px;line-height:1.4}[hidden]{display:n
 <label><input id="showRemaining" type="checkbox" checked> <span data-i18n="showRemaining">Show the remaining track time</span></label>
 <small data-i18n="remainingHint">The countdown pauses with playback and hides when the duration is unknown.</small>
 </section>
+<section id="diagnostics"><label data-i18n="diagnosticsTitle">Local diagnostic</label>
+<small data-i18n="diagnosticsPrivacy">Preview before copying. No account details, paths, track or device identifiers are included. Nothing is sent automatically.</small>
+<button id="diagnose" data-i18n="diagnosticsRefresh">Preview diagnostic</button><button id="copyDiagnostic" data-i18n="diagnosticsCopy" disabled>Copy diagnostic</button>
+<p id="diagnosticStatus" role="status" aria-live="polite"></p>
+<textarea id="diagnosticPreview" rows="9" readonly hidden aria-label="Diagnostic preview"></textarea></section>
 <label for="exe" data-i18n="executableLabel">Spotifast location (optional)</label><input id="exe" data-i18n-placeholder="executablePlaceholder" placeholder="Automatic detection"><small data-i18n="executableHint">Applies to all buttons. Leave empty for the standard Windows installation.</small>
 <script src="i18n.js"></script><script src="spotify.js"></script><script src="settings.js"></script>
 </body></html>

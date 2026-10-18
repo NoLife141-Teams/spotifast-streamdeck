@@ -20,7 +20,7 @@ function plugin(type) {
 function controls() {
   const globalDisabled = !connected() || !globalsReady || Object.keys(globalPending).length > 0;
   for (const id of ['language', 'exe', 'check', 'open']) element(id).disabled = globalDisabled;
-  for (const id of ['uri', 'step', 'captionLayout', ...checkboxes]) element(id).disabled = !connected() || (['scrollText', 'captionLayout'].includes(id) && settings.showText === false);
+  for (const id of ['uri', 'step', 'volumePercent', 'captionLayout', ...checkboxes]) element(id).disabled = !connected() || (['scrollText', 'captionLayout'].includes(id) && settings.showText === false);
 }
 function renderStatus() {
   element('status').textContent = status.key ? translate(status.key, { title: status.trackTitle }) : status.message;
@@ -50,9 +50,13 @@ function normalizeStep(value) {
   const number = String(value).trim() === '' ? 5 : Number(value);
   return Number.isFinite(number) ? Math.max(1, Math.min(25, Math.round(number))) : 5;
 }
+function normalizeAbsoluteVolume(value) {
+  const number = value === undefined || String(value).trim() === '' ? 50 : Number(value);
+  return Number.isFinite(number) ? Math.max(0, Math.min(100, Math.round(number))) : 50;
+}
 function normalizeCaptionLayout(value) { return value === 'twoLines' ? 'twoLines' : 'compact'; }
 function renderLocalSettings() {
-  for (const [id, value] of Object.entries({ uri: settings.uri ?? '', step: normalizeStep(settings.step ?? 5), captionLayout: normalizeCaptionLayout(settings.captionLayout), ...Object.fromEntries(checkboxes.map(id => [id, settings[id] !== false])) })) {
+  for (const [id, value] of Object.entries({ uri: settings.uri ?? '', volumePercent: normalizeAbsoluteVolume(settings.volumePercent), step: normalizeStep(settings.step ?? 5), captionLayout: normalizeCaptionLayout(settings.captionLayout), ...Object.fromEntries(checkboxes.map(id => [id, settings[id] !== false])) })) {
     const input = element(id);
     if (document.activeElement === input) continue;
     if (checkboxes.includes(id)) input.checked = value;
@@ -81,6 +85,7 @@ window.connectElgatoStreamDeckSocket = (port, propertyInspectorUUID, registerEve
   element('playlist').hidden = id !== 'playlist';
   element('volume').hidden = !['volumeup', 'volumedown', 'volume'].includes(id);
   element('text').hidden = id !== 'nowplaying';
+  element('absoluteVolume').hidden = id !== 'setvolume';
   renderLocalSettings();
   renderLanguage();
   socket = new WebSocket('ws://127.0.0.1:' + port);
@@ -131,7 +136,7 @@ element('exe').onchange = () => saveGlobal('exePath', element('exe').value.trim(
 element('language').onchange = () => saveGlobal('language', element('language').value);
 function save(id) {
   if (!connected()) return;
-  const value = checkboxes.includes(id) ? element(id).checked : id === 'step' ? normalizeStep(element(id).value) : id === 'captionLayout' ? normalizeCaptionLayout(element(id).value) : element(id).value.trim();
+  const value = checkboxes.includes(id) ? element(id).checked : id === 'volumePercent' ? normalizeAbsoluteVolume(element(id).value) : id === 'step' ? normalizeStep(element(id).value) : id === 'captionLayout' ? normalizeCaptionLayout(element(id).value) : element(id).value.trim();
   if (!checkboxes.includes(id)) element(id).value = value;
   if (id === 'uri') renderUriValidation();
   localPending[id] = value;
@@ -140,7 +145,7 @@ function save(id) {
   send('setSettings', settings);
   send('getSettings');
 }
-for (const id of ['uri', 'step', 'captionLayout', ...checkboxes]) element(id).onchange = () => save(id);
+for (const id of ['uri', 'step', 'volumePercent', 'captionLayout', ...checkboxes]) element(id).onchange = () => save(id);
 element('uri').oninput = renderUriValidation;
 renderLanguage();
 controls();

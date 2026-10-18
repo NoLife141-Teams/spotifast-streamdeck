@@ -173,3 +173,16 @@ test('link feedback updates after trimming, saving and clearing a setting', () =
   assert.equal(element('uri').attributes['aria-invalid'], 'false');
   assert.match(element('uriFeedback').textContent, /Copy a Spotify link/);
 });
+
+test('absolute volume is isolated, bounded, and preserves other profile settings', () => {
+  const { element, sent } = inspector({ action: 'setvolume' });
+  assert.equal(element('absoluteVolume').hidden, false);
+  assert.equal(element('volume').hidden, true);
+  assert.equal(element('volumePercent').value, 50);
+  for (const [value, expected] of [['0', 0], ['100', 100], ['-1', 0], ['101', 100], ['25.6', 26], ['NaN', 50], ['', 50]]) {
+    element('volumePercent').value = value; element('volumePercent').onchange();
+    assert.equal(sent('setSettings').at(-1).payload.volumePercent, expected);
+    assert.equal(sent('setSettings').at(-1).payload.preserved, 'keep');
+  }
+  assert.equal(inspector({ action: 'volumeup' }).element('absoluteVolume').hidden, true);
+});

@@ -247,3 +247,30 @@ test('all five supported link types have accurate English and French feedback', 
     }
   }
 });
+
+test('elapsed/progress default off and preview requests preserve existing fields without playback commands', () => {
+  const { element, sent, receive } = inspector({ action: 'nowplaying' });
+  assert.equal(element('showElapsed').checked, false); assert.equal(element('showProgress').checked, false); assert.equal(element('showRemaining').checked, true);
+  const first = sent('sendToPlugin').filter(message => message.payload.type === 'preview').at(-1).payload;
+  assert.ok(first.requestId);
+  const statusCount = sent('sendToPlugin').filter(message => message.payload.type === 'status').length;
+  element('showElapsed').checked = true; element('showElapsed').onchange();
+  const save = sent('setSettings').at(-1).payload;
+  assert.equal(save.showElapsed, true); assert.equal(save.preserved, 'keep');
+  const latest = sent('sendToPlugin').at(-1).payload;
+  assert.equal(latest.type, 'preview'); assert.equal(latest.settings.showElapsed, true); assert.equal(latest.settings.preserved, undefined);
+  receive('sendToPropertyInspector', { type: 'preview', requestId: first.requestId, image: 'data:image/svg+xml;base64,T0xE', messageKey: 'previewLive' });
+  assert.notEqual(element('artworkPreview').src, 'data:image/svg+xml;base64,T0xE');
+  receive('sendToPropertyInspector', { type: 'preview', requestId: latest.requestId, image: 'data:image/svg+xml;base64,TkVX', messageKey: 'previewLive' });
+  assert.equal(element('artworkPreview').src, 'data:image/svg+xml;base64,TkVX'); assert.match(element('previewStatus').textContent, /current player state/);
+  assert.equal(sent('sendToPlugin').filter(message => message.payload.type === 'status').length, statusCount);
+  assert.equal(sent('sendToPlugin').some(message => message.payload.type === 'open'), false);
+});
+
+test('preview hides stale artwork offline and refuses external image sources', () => {
+  const { element, sent, receive, socket } = inspector({ action: 'nowplaying' });
+  const requestId = sent('sendToPlugin').at(-1).payload.requestId;
+  receive('sendToPropertyInspector', { type: 'preview', requestId, image: 'https://untrusted.example/track', messageKey: 'previewOffline', online: false });
+  assert.equal(element('artworkPreview').src, '../imgs/music.png'); assert.match(element('previewStatus').textContent, /unavailable/);
+  socket.onerror(); assert.equal(element('showElapsed').disabled, true); assert.equal(element('showProgress').disabled, true); assert.match(element('previewStatus').textContent, /Connection to Stream Deck was lost/);
+});

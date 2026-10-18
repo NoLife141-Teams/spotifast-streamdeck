@@ -13,7 +13,9 @@
     "validate": "streamdeck validate build/rocks.spotifast.streamdeck.sdPlugin",
     "pack": "streamdeck pack build/rocks.spotifast.streamdeck.sdPlugin --output dist",
     "release:check": "node scripts/check-release.mjs",
-    "benchmark": "node scripts/benchmark.mjs"
+    "benchmark": "node scripts/benchmark.mjs",
+    "package:verify": "node scripts/verify-package.mjs",
+    "release:prepare": "node scripts/prepare-release.mjs"
   },
   "dependencies": {
     "@elgato/streamdeck": "3.0.2",
@@ -22,6 +24,7 @@
   },
   "devDependencies": {
     "@elgato/cli": "1.10.2",
+    "@zip.js/zip.js": "2.23.0",
     "esbuild": "0.28.2"
   },
   "license": "MIT"

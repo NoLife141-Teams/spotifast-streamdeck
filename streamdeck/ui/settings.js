@@ -1,9 +1,9 @@
 let socket, uuid, actionId, settings = {}, globalSettings = {}, hostLanguage = 'en';
 let globalsReady = false, socketFailed = false, globalPending = {}, localPending = {}, requestSequence = 0, activeRequestId;
 let translate = SpotifastI18n.createTranslator('en');
-let status = { key: 'checking' }, diagnosticRequestId, diagnosticReport;
+let status = { key: 'checking' }, diagnosticRequestId, diagnosticReport, previewRequestId, previewStatusKey = 'previewWaiting';
 const element = id => document.getElementById(id);
-const checkboxes = ['showText', 'scrollText', 'showRemaining'];
+const checkboxes = ['showText', 'scrollText', 'showRemaining', 'showElapsed', 'showProgress'];
 const connected = () => !socketFailed && socket?.readyState === WebSocket.OPEN;
 function send(event, payload) {
   if (!connected()) return false;
@@ -16,6 +16,13 @@ function plugin(type) {
   status = { key: 'checking' };
   renderStatus();
   send('sendToPlugin', { type, requestId: activeRequestId });
+}
+function requestPreview() {
+  if (actionId?.split('.').pop() !== 'nowplaying' || !connected()) return;
+  previewRequestId = uuid + ':preview:' + (++requestSequence);
+  send('sendToPlugin', { type: 'preview', requestId: previewRequestId, settings: Object.fromEntries(
+    ['showText', 'scrollText', 'showRemaining', 'showElapsed', 'showProgress', 'captionLayout'].map(key => [key, settings[key]])
+  ) });
 }
 function controls() {
   const globalDisabled = !connected() || !globalsReady || Object.keys(globalPending).length > 0;
@@ -63,6 +70,7 @@ function renderLanguage() {
   renderStatus();
   renderUriValidation();
   renderDiagnostic();
+  element('previewStatus').textContent = translate(previewStatusKey);
 }
 function normalizeStep(value) {
   const number = String(value).trim() === '' ? 5 : Number(value);
@@ -78,7 +86,7 @@ function normalizeSeekSeconds(value) {
 }
 function normalizeCaptionLayout(value) { return value === 'twoLines' ? 'twoLines' : 'compact'; }
 function renderLocalSettings() {
-  for (const [id, value] of Object.entries({ uri: settings.uri ?? '', displayName: SpotifastSpotify.shortcutName(settings.displayName), seekSeconds: normalizeSeekSeconds(settings.seekSeconds), volumePercent: normalizeAbsoluteVolume(settings.volumePercent), step: normalizeStep(settings.step ?? 5), captionLayout: normalizeCaptionLayout(settings.captionLayout), ...Object.fromEntries(checkboxes.map(id => [id, settings[id] !== false])) })) {
+  for (const [id, value] of Object.entries({ uri: settings.uri ?? '', displayName: SpotifastSpotify.shortcutName(settings.displayName), seekSeconds: normalizeSeekSeconds(settings.seekSeconds), volumePercent: normalizeAbsoluteVolume(settings.volumePercent), step: normalizeStep(settings.step ?? 5), captionLayout: normalizeCaptionLayout(settings.captionLayout), ...Object.fromEntries(checkboxes.map(id => [id, ['showElapsed', 'showProgress'].includes(id) ? settings[id] === true : settings[id] !== false])) })) {
     const input = element(id);
     if (document.activeElement === input) continue;
     if (checkboxes.includes(id)) input.checked = value;
@@ -92,6 +100,9 @@ function mergeReceived(incoming, pending) {
 }
 function disconnected() {
   socketFailed = true;
+  previewStatusKey = 'connectionLost';
+  element('previewStatus').textContent = translate(previewStatusKey);
+  element('artworkPreview').src = '../imgs/music.png';
   globalsReady = false;
   status = { key: 'connectionLost', online: false };
   renderStatus();
@@ -129,12 +140,20 @@ window.connectElgatoStreamDeckSocket = (port, propertyInspectorUUID, registerEve
       if (document.activeElement !== element('exe')) element('exe').value = globalSettings.exePath ?? '';
       renderLanguage();
       controls();
-      if (!wasReady || (wasSaving && !Object.keys(globalPending).length)) plugin('status');
+      if (!wasReady || (wasSaving && !Object.keys(globalPending).length)) { plugin('status'); requestPreview(); }
     }
     if (message.event === 'didReceiveSettings') {
       settings = mergeReceived(message.payload.settings ?? {}, localPending);
       renderLocalSettings();
       controls();
+      requestPreview();
+    }
+    if (message.event === 'sendToPropertyInspector' && message.payload?.type === 'preview') {
+      if (message.payload.requestId !== previewRequestId) return;
+      const image = message.payload.image;
+      element('artworkPreview').src = typeof image === 'string' && /^data:image\/svg\+xml;base64,[A-Za-z0-9+/=]+$/.test(image) ? image : '../imgs/music.png';
+      previewStatusKey = message.payload.messageKey;
+      element('previewStatus').textContent = translate(previewStatusKey);
     }
     if (message.event === 'sendToPropertyInspector' && message.payload?.type === 'diagnostics') {
       if (message.payload.requestId !== diagnosticRequestId) return;
@@ -186,6 +205,7 @@ function save(id) {
   controls();
   send('setSettings', settings);
   send('getSettings');
+  requestPreview();
 }
 for (const id of ['uri', 'displayName', 'step', 'volumePercent', 'seekSeconds', 'captionLayout', ...checkboxes]) element(id).onchange = () => save(id);
 element('uri').oninput = renderUriValidation;

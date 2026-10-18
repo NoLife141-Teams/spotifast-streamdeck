@@ -86,6 +86,17 @@ export function formatRemaining(milliseconds) {
   const pad = value => String(value).padStart(2, '0');
   return '-' + (minutes >= 60 ? Math.floor(minutes / 60) + ':' + pad(minutes % 60) : minutes) + ':' + pad(seconds % 60);
 }
+export function formatElapsed(milliseconds) {
+  if (!Number.isFinite(milliseconds) || milliseconds < 0) return '';
+  const seconds = Math.floor(milliseconds / 1000), minutes = Math.floor(seconds / 60);
+  const pad = value => String(value).padStart(2, '0');
+  return (minutes >= 60 ? Math.floor(minutes / 60) + ':' + pad(minutes % 60) : minutes) + ':' + pad(seconds % 60);
+}
+function progressWidth(progress) {
+  if (!Number.isFinite(progress)) return undefined;
+  // Quantize the visible width, so imperceptible ratio changes reuse the image.
+  return Math.round(Math.max(0, Math.min(1, progress)) * SIZE * 100) / 100;
+}
 function prepareLine(value, font, sizes, scrollText = false) {
   const line = scrollText ? sizedLine(normalized(value), font, sizes) : fitCaption(value, font, sizes);
   if (supported(font, line.text) && line.text) {
@@ -122,11 +133,17 @@ function prepareRemaining(remaining, font) {
   }
   return time;
 }
-function renderCaption(cover, layout, fonts, { elapsedMs = 0, remainingMs, playbackFeedback, feedbackOpacity = 1 } = {}, prepared = {}) {
+function drawTimer(id, time, baseline, center) {
+  return '<g id="' + id + '"><g stroke="#000" stroke-width="1.2" stroke-linejoin="round">' + drawLine(time, baseline, '#000', 0, center) + '</g>' + drawLine(time, baseline, '#fff', 0, center) + '</g>';
+}
+function renderCaption(cover, layout, fonts, { elapsedMs = 0, remainingMs, positionMs, progress, playbackFeedback, feedbackOpacity = 1 } = {}, prepared = {}) {
   const feedback = ['playing', 'paused'].includes(playbackFeedback);
   const opacity = Math.round(Math.max(0, Math.min(1, Number.isFinite(feedbackOpacity) ? feedbackOpacity : 1)) * 100) / 100;
   const remaining = formatRemaining(remainingMs);
+  const position = formatElapsed(positionMs), width = progressWidth(progress);
   const time = prepared.time ?? prepareRemaining(remaining, fonts.bold);
+  const positionTime = position ? prepared.positionTime ?? prepareRemaining(position, fonts.bold) : undefined;
+  const timerBaseline = width === undefined ? 12 : 15;
   const image = (prepared.validCover ?? /^data:image\/(?:jpeg|png|webp);base64,[A-Za-z0-9+/=\r\n]+$/.test(cover || '')) ?
     '<image x="0" y="0" width="72" height="72" preserveAspectRatio="xMidYMid slice" xlink:href="' + cover + '"/>' : '';
   const textTop = layout.compact ? 56 : 48;
@@ -138,9 +155,11 @@ function renderCaption(cover, layout, fonts, { elapsedMs = 0, remainingMs, playb
     '<defs><linearGradient id="captionShade" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#000" stop-opacity="0"/><stop offset=".5" stop-color="#000" stop-opacity=".5"/><stop offset="1" stop-color="#000" stop-opacity=".88"/></linearGradient>' +
     '<clipPath id="caption"><rect x="6" y="' + textTop + '" width="60" height="' + (72 - textTop) + '"/></clipPath><clipPath id="track"><rect x="6" y="48" width="60" height="13"/></clipPath><clipPath id="artist"><rect x="6" y="60" width="60" height="12"/></clipPath></defs>' +
     '<rect width="72" height="72" fill="#202020"/>' + image +
+    (width !== undefined ? '<g id="playback-progress"><rect x="0" y="0" width="72" height="3" fill="#000" fill-opacity=".6"/><rect x="0" y="0" width="' + width + '" height="3" fill="#1ed760"/></g>' : '') +
     (feedback && opacity > 0 ? '<g id="playback-feedback" opacity="' + opacity + '"><rect x="20" y="20" width="32" height="32" rx="7" fill="#000" fill-opacity=".84"/>' +
       (playbackFeedback === 'paused' ? '<path id="playback-pause" d="M28 27h6v18h-6z M38 27h6v18h-6z" fill="#fff"/>' : '<path id="playback-play" d="M31 26l14 10-14 10z" fill="#fff"/>') + '</g>' : '') +
-    (remaining ? '<g id="remaining-time"><g stroke="#000" stroke-width="1.2" stroke-linejoin="round">' + drawLine(time, 12, '#000', 0, 68 - time.inkWidth / 2) + '</g>' + drawLine(time, 12, '#fff', 0, 68 - time.inkWidth / 2) + '</g>' : '') +
+    (position ? drawTimer('elapsed-time', positionTime, timerBaseline, 4 + positionTime.inkWidth / 2) : '') +
+    (remaining ? drawTimer('remaining-time', time, timerBaseline + (position ? 12 : 0), 68 - time.inkWidth / 2) : '') +
     (layout.showText ? '<rect y="' + (textTop - 2) + '" width="72" height="' + (74 - textTop) + '" fill="url(#captionShade)"/>' +
     '<g clip-path="url(#caption)"><g stroke="#000" stroke-width=".35" stroke-linejoin="round">' + caption + '</g></g>' : '') + '</svg>';
 }
@@ -188,15 +207,20 @@ export class ArtworkRenderer {
       while (this.covers.size > 8) this.covers.delete(this.covers.keys().next().value);
     }
     const remaining = formatRemaining(options.remainingMs);
-    const key = JSON.stringify([preparedCover.id, layoutKey, layout.showText ? scrollOffset((layout.combined ?? layout.track).width, options.elapsedMs) : 0, layout.showText && !layout.compact ? scrollOffset(layout.artist.width, options.elapsedMs) : 0, remaining, options.playbackFeedback, Math.round((options.feedbackOpacity ?? 1) * 100) / 100]);
+    const position = formatElapsed(options.positionMs), width = progressWidth(options.progress);
+    const key = JSON.stringify([preparedCover.id, layoutKey, layout.showText ? scrollOffset((layout.combined ?? layout.track).width, options.elapsedMs) : 0, layout.showText && !layout.compact ? scrollOffset(layout.artist.width, options.elapsedMs) : 0, remaining, options.playbackFeedback, Math.round((options.feedbackOpacity ?? 1) * 100) / 100, position, width]);
     if (this.cache.has(key)) return this.cache.get(key);
-    let time = this.counters.get(remaining);
-    if (!time) {
-      time = prepareRemaining(remaining, fonts.bold);
-      this.counters.set(remaining, time);
-      while (this.counters.size > 64) this.counters.delete(this.counters.keys().next().value);
-    }
-    const svg = renderCaption(cover, layout, fonts, options, { ...preparedCover, time });
+    const counterFor = value => {
+      let time = this.counters.get(value);
+      if (!time) {
+        time = prepareRemaining(value, fonts.bold);
+        this.counters.set(value, time);
+        while (this.counters.size > 64) this.counters.delete(this.counters.keys().next().value);
+      }
+      return time;
+    };
+    const time = counterFor(remaining), positionTime = position ? counterFor(position) : undefined;
+    const svg = renderCaption(cover, layout, fonts, options, { ...preparedCover, time, positionTime });
     const image = 'data:image/svg+xml;base64,' + Buffer.from(svg).toString('base64');
     this.cache.set(key, image);
     while (this.cache.size > 8) this.cache.delete(this.cache.keys().next().value);

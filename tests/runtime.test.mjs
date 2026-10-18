@@ -970,3 +970,96 @@ test('an unavailable upstream version never misreports an existing executable as
   assert.equal(messages.at(-1).report.upstreamVersion, 'unavailable');
   assert.notEqual(messages.at(-1).report.status.category, 'executable-missing'); api.stop();
 });
+
+test('active device display only follows reported state and transfer never runs on render or settings edits', async () => {
+  const { api, client, callbacks } = await runtime(); const action = key('device');
+  const entry = { action, settings: { deviceId: 'speaker' } }; api.visible.set(action.id, entry);
+  client.data.device = 'Phone'; let transfers = 0, selection;
+  client.transfer = async (id, options) => { transfers++; selection = { id, options }; };
+  await api.refresh(); assert.equal(action.titles.at(-1), 'Phone'); assert.equal(transfers, 0);
+  callbacks.onKeyDown({ action, payload: { settings: { deviceId: 'speaker' } } }); await flush();
+  assert.equal(transfers, 1); assert.equal(selection.id, 'speaker'); assert.equal(action.titles.at(-1), 'Phone');
+  client.data.device = 'Kitchen'; await api.refresh(); assert.equal(action.titles.at(-1), 'Kitchen');
+  assert.equal(selection.options.valid(), true);
+  callbacks.settings({ action, payload: { settings: { deviceId: 'new' } } }); assert.equal(selection.options.valid(), false); assert.equal(transfers, 1);
+  api.stop();
+});
+
+test('device list requests have their own inspector lane and stale sessions never receive an inventory', async () => {
+  const { api, client, select, messages } = await runtime(); const action = key('device'); select(action);
+  const waiting = deferred(); client.devices = async ({ valid }) => { client.validDevices = valid; return waiting.promise; };
+  const listing = api.inspectorRequest({ action, payload: { type: 'devices', requestId: 'list' } }); await flush();
+  await api.inspectorRequest({ action, payload: { type: 'status', requestId: 'status' } });
+  assert.equal(client.validDevices(), true);
+  waiting.resolve([{ id: 'a', name: 'Phone', kind: 'Smartphone', active: true }]); await listing;
+  assert.deepEqual(messages.map(message => message.requestId), ['status', 'list']);
+  const old = deferred(); client.devices = async () => old.promise;
+  const pending = api.inspectorRequest({ action, payload: { type: 'devices', requestId: 'old' } }); await flush();
+  select(undefined); select(action); old.resolve([]); await pending;
+  assert.equal(messages.some(message => message.requestId === 'old'), false); api.stop();
+});
+
+test('device list failures are localized without suggesting a fallback transfer', async () => {
+  const { api, client, select, messages } = await runtime(); const action = key('device'); select(action);
+  client.devices = async () => { throw new LocalizedError('devicesInvalid'); };
+  await api.inspectorRequest({ action, payload: { type: 'devices', requestId: 'bad-list' } });
+  assert.equal(messages.at(-1).type, 'devices'); assert.equal(messages.at(-1).messageKey, 'devicesInvalid'); assert.equal(messages.at(-1).failed, true);
+  assert.deepEqual(client.calls, []); api.stop();
+});
+
+test('a device key press cannot transfer an old target after settings change before its first await resumes', async () => {
+  const { api, client, callbacks } = await runtime(); const action = key('device');
+  api.visible.set(action.id, { action, settings: { deviceId: 'old-device' } }); await api.refresh();
+  const transfers = []; client.transfer = async (id, options) => { if (options.valid()) transfers.push(id); };
+  callbacks.onKeyDown({ action, payload: { settings: { deviceId: 'old-device' } } });
+  callbacks.settings({ action, payload: { settings: { deviceId: 'new-device' } } });
+  await flush(); assert.deepEqual(transfers, []); assert.equal(action.alerts, 1); api.stop();
+});
+
+test('a device key press cannot survive disappearance, replacement or reconfiguration before its first await resumes', async () => {
+  for (const change of ['disappear', 'replace', 'configure']) {
+    const { api, client, callbacks } = await runtime(); const action = key('device');
+    api.visible.set(action.id, { action, settings: { deviceId: 'target' } }); await api.refresh();
+    const transfers = []; client.transfer = async (id, options) => { if (options.valid()) transfers.push(id); };
+    callbacks.onKeyDown({ action, payload: { settings: { deviceId: 'target' } } });
+    if (change === 'disappear') callbacks.onWillDisappear({ action });
+    if (change === 'replace') api.visible.set(action.id, { action, settings: { deviceId: 'target' } });
+    if (change === 'configure') api.configure({ exePath: 'D:/New/spotifast.exe' });
+    await flush(); assert.deepEqual(transfers, [], change); assert.equal(action.alerts, 1, change); api.stop();
+  }
+});
+
+test('a seek press retains the track observed before its first await across a resolving refresh', async () => {
+  const { api, client, callbacks } = await runtime(); const action = key('seekforward');
+  api.visible.set(action.id, { action, settings: {} });
+  client.data = { ...client.data, title: 'Old track', position: 1000, duration: 100000 }; await api.refresh();
+  const seeks = []; client.seek = async (args, options) => { if (options.valid()) seeks.push(options.snapshot.title); };
+  client.data = { ...client.data, title: 'New track' };
+  const refreshed = api.refresh(); callbacks.onKeyDown({ action, payload: { settings: {} } });
+  await refreshed; await flush(); assert.deepEqual(seeks, []); assert.equal(action.alerts, 1); api.stop();
+});
+
+test('a seek press cannot survive visible entry removal, replacement or configuration change before resuming', async () => {
+  for (const change of ['disappear', 'replace', 'configure']) {
+    const { api, client, callbacks } = await runtime(); const action = key('seekback');
+    api.visible.set(action.id, { action, settings: {} });
+    client.data = { ...client.data, title: 'Track', position: 1000, duration: 100000 }; await api.refresh();
+    const seeks = []; client.seek = async (args, options) => { if (options.valid()) seeks.push(args); };
+    callbacks.onKeyDown({ action, payload: { settings: {} } });
+    if (change === 'disappear') callbacks.onWillDisappear({ action });
+    if (change === 'replace') api.visible.set(action.id, { action, settings: {} });
+    if (change === 'configure') api.configure({ exePath: 'D:/New/spotifast.exe' });
+    await flush(); assert.deepEqual(seeks, [], change); assert.equal(action.alerts, 1, change); api.stop();
+  }
+});
+
+test('a seek macro without its own visible entry still uses the originally sampled state and age', async () => {
+  let clock = 100; const { api, client, callbacks } = await runtime({ now: () => clock });
+  const artwork = key('nowplaying'), macro = key('seekforward', 'macro');
+  api.visible.set(artwork.id, { action: artwork, settings: {} });
+  client.data = { ...client.data, title: 'Track', position: 1000, duration: 100000 }; await api.refresh();
+  const seeks = []; client.seek = async (args, options) => { if (options.valid()) seeks.push({ args, age: options.ageMs, title: options.snapshot.title }); };
+  clock = 200; callbacks.onKeyDown({ action: macro, payload: { settings: {}, isInMultiAction: true, userDesiredState: 0 } });
+  clock = 350; await flush();
+  assert.deepEqual(seeks, [{ args: ['seek', '10'], age: 250, title: 'Track' }]); assert.equal(macro.alerts, 0); api.stop();
+});

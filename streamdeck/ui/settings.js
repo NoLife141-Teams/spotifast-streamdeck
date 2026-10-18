@@ -2,6 +2,7 @@ let socket, uuid, actionId, settings = {}, globalSettings = {}, hostLanguage = '
 let globalsReady = false, socketFailed = false, globalPending = {}, localPending = {}, requestSequence = 0, activeRequestId;
 let translate = SpotifastI18n.createTranslator('en');
 let status = { key: 'checking' }, diagnosticRequestId, diagnosticReport, previewRequestId, previewStatusKey = 'previewWaiting';
+let devices = [], devicesReady = false, devicesPending = false, devicesRequestId, devicesMessage = 'deviceChoose';
 const element = id => document.getElementById(id);
 const checkboxes = ['showText', 'scrollText', 'showRemaining', 'showElapsed', 'showProgress'];
 const connected = () => !socketFailed && socket?.readyState === WebSocket.OPEN;
@@ -26,7 +27,9 @@ function requestPreview() {
 }
 function controls() {
   const globalDisabled = !connected() || !globalsReady || Object.keys(globalPending).length > 0;
-  for (const id of ['language', 'exe', 'check', 'open', 'diagnose']) element(id).disabled = globalDisabled;
+  for (const id of ['language', 'exe', 'check', 'open', 'diagnose', 'refreshDevices']) element(id).disabled = globalDisabled;
+  element('deviceId').disabled = globalDisabled || devicesPending || !devicesReady || !devices.length;
+  element('refreshDevices').disabled = globalDisabled || devicesPending;
   for (const id of ['uri', 'displayName', 'step', 'volumePercent', 'seekSeconds', 'captionLayout', ...checkboxes]) element(id).disabled = !connected() || (['scrollText', 'captionLayout'].includes(id) && settings.showText === false);
 }
 function renderDiagnostic() {
@@ -48,7 +51,31 @@ function requestDiagnostic() {
 }
 function renderStatus() {
   element('status').textContent = status.key ? translate(status.key, { title: status.trackTitle }) : status.message;
+  element('activeDevice').textContent = status.online && status.activeDevice ? translate('activeDeviceLabel', { device: status.activeDevice }) : translate('noDevice');
   element('status').style.borderColor = status.online === true ? '#a3e635' : status.online === false ? '#fbbf24' : '#999';
+}
+function renderDevices() {
+  const select = element('deviceId'), options = [];
+  const option = (value, text, disabled = false) => {
+    const node = document.createElement('option'); node.value = value; node.textContent = text; node.disabled = disabled; return node;
+  };
+  options.push(option('', translate('deviceChoose')));
+  for (const device of devices) options.push(option(device.id, device.name + ' (' + device.kind + ') · ' + device.id));
+  if (settings.deviceId && !devices.some(device => device.id === settings.deviceId)) options.push(option(settings.deviceId, translate('deviceSavedUnavailable'), true));
+  select.replaceChildren(...options);
+  select.value = settings.deviceId || '';
+  element('devicesFeedback').textContent = translate(devicesMessage);
+}
+function requestDevices() {
+  if (!globalsReady || Object.keys(globalPending).length || !connected() || devicesPending) return;
+  devicesRequestId = uuid + ':devices:' + (++requestSequence);
+  devicesPending = true; devicesMessage = 'devicesLoading';
+  renderDevices(); controls();
+  send('sendToPlugin', { type: 'devices', requestId: devicesRequestId });
+}
+function clearDevices() {
+  devices = []; devicesReady = false; devicesPending = false; devicesRequestId = undefined; devicesMessage = 'deviceChoose';
+  renderDevices();
 }
 function renderUriValidation() {
   const input = element('uri'), value = input.value.trim();
@@ -68,6 +95,7 @@ function renderLanguage() {
   const id = actionId?.split('.').pop();
   element('help').textContent = translate(id === 'volume' ? 'dialHelp' : id === 'nowplaying' ? 'artworkHelp' : id === 'like' ? 'favoriteHelp' : 'help');
   renderStatus();
+  renderDevices();
   renderUriValidation();
   renderDiagnostic();
   element('previewStatus').textContent = translate(previewStatusKey);
@@ -93,6 +121,7 @@ function renderLocalSettings() {
     else input.value = value;
   }
   renderUriValidation();
+  renderDevices();
 }
 function mergeReceived(incoming, pending) {
   for (const key of Object.keys(pending)) if (incoming[key] === pending[key]) delete pending[key];
@@ -104,6 +133,7 @@ function disconnected() {
   element('previewStatus').textContent = translate(previewStatusKey);
   element('artworkPreview').src = '../imgs/music.png';
   globalsReady = false;
+  clearDevices();
   status = { key: 'connectionLost', online: false };
   renderStatus();
   controls();
@@ -120,6 +150,7 @@ window.connectElgatoStreamDeckSocket = (port, propertyInspectorUUID, registerEve
   element('text').hidden = id !== 'nowplaying';
   element('absoluteVolume').hidden = id !== 'setvolume';
   element('seek').hidden = !['seekback', 'seekforward'].includes(id);
+  element('devices').hidden = id !== 'device';
   renderLocalSettings();
   renderLanguage();
   socket = new WebSocket('ws://127.0.0.1:' + port);
@@ -135,7 +166,9 @@ window.connectElgatoStreamDeckSocket = (port, propertyInspectorUUID, registerEve
     const message = JSON.parse(event.data);
     if (message.event === 'didReceiveGlobalSettings') {
       const wasReady = globalsReady, wasSaving = Object.keys(globalPending).length > 0;
+      const previousPath = globalSettings.exePath;
       globalSettings = mergeReceived(message.payload.settings ?? {}, globalPending);
+      if (previousPath !== globalSettings.exePath) clearDevices();
       globalsReady = true;
       if (document.activeElement !== element('exe')) element('exe').value = globalSettings.exePath ?? '';
       renderLanguage();
@@ -160,9 +193,16 @@ window.connectElgatoStreamDeckSocket = (port, propertyInspectorUUID, registerEve
       diagnosticReport = message.payload.report;
       renderDiagnostic();
     }
+    if (message.event === 'sendToPropertyInspector' && message.payload?.type === 'devices') {
+      if (!devicesRequestId || message.payload.requestId !== devicesRequestId) return;
+      devicesPending = false; devicesReady = !message.payload.failed;
+      devices = devicesReady && Array.isArray(message.payload.devices) ? message.payload.devices : [];
+      devicesMessage = message.payload.messageKey || 'devicesEmpty';
+      renderDevices(); controls();
+    }
     if (message.event === 'sendToPropertyInspector' && message.payload?.type === 'status') {
       if (message.payload.requestId !== undefined && message.payload.requestId !== activeRequestId) return;
-      status = { key: message.payload.messageKey, trackTitle: message.payload.trackTitle, message: message.payload.message, online: message.payload.online };
+      status = { key: message.payload.messageKey, trackTitle: message.payload.trackTitle, message: message.payload.message, online: message.payload.online, activeDevice: message.payload.activeDevice };
       renderStatus();
     }
   };
@@ -183,8 +223,14 @@ element('copyDiagnostic').onclick = async () => {
 };
 element('open').onclick = () => plugin('open');
 element('check').onclick = () => plugin('status');
+element('refreshDevices').onclick = requestDevices;
+element('deviceId').onchange = () => {
+  if (!connected() || devicesPending || !devicesReady || !devices.some(device => device.id === element('deviceId').value)) { renderDevices(); return; }
+  save('deviceId');
+};
 function saveGlobal(key, value) {
   if (!globalsReady || !connected() || Object.keys(globalPending).length) return;
+  if (key === 'exePath') clearDevices();
   globalPending = { [key]: value };
   globalSettings = { ...globalSettings, ...globalPending };
   renderLanguage();

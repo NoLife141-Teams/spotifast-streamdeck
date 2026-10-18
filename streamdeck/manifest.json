@@ -355,6 +355,24 @@
         }
       ],
       "SupportedInMultiActions": true
+    },
+    {
+      "UUID": "rocks.spotifast.streamdeck.device",
+      "Name": "Playback device",
+      "Icon": "imgs/music",
+      "Tooltip": "Spotifast: Playback device",
+      "PropertyInspectorPath": "ui/settings.html",
+      "Controllers": [
+        "Keypad"
+      ],
+      "States": [
+        {
+          "Image": "imgs/music",
+          "TitleAlignment": "bottom",
+          "FontSize": 11
+        }
+      ],
+      "SupportedInMultiActions": true
     }
   ]
 }

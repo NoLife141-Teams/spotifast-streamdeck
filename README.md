@@ -164,3 +164,9 @@ Before publishing, verify the release tag, matching versions, MIT license and cl
 ```sh
 npm run release:check -- v0.2.7
 ```
+
+### Candidate validation / Validation des versions candidates
+
+- [Performance baseline / Mesures de référence](docs/PERFORMANCE.md): reproducible synthetic runtime cases and a read-only Windows process sampler; neither substitutes for hardware latency tests.
+- [Release qualification / Qualification de livraison](docs/RELEASE-QUALIFICATION.md): Windows Node 20/22 gates, exact installer verification, tag-only publication, and physical-device checklist.
+- `npm run package:verify` verifies and smoke-tests the actual packed installer without installing it. Ordinary development must not publish a release, create a version tag or replace an existing installation.

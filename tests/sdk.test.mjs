@@ -25,7 +25,7 @@ test('packaged plugin starts with the real SDK on Stream Deck 7.1 and applies gl
     assert.ok(path.basename(directory).startsWith('spotifast-sdk-'));
     await rm(directory, { recursive: true, force: true });
   });
-  await cp(new URL('../build/rocks.spotifast.streamdeck.sdPlugin/', import.meta.url), directory, { recursive: true });
+  await cp(process.env.SPOTIFAST_PACKAGE_TEST_DIRECTORY || new URL('../build/rocks.spotifast.streamdeck.sdPlugin/', import.meta.url), directory, { recursive: true });
   const executable = path.join(directory, 'missing', 'spotifast.exe');
   const action = 'rocks.spotifast.streamdeck.nowplaying';
   const context = 'sdk-smoke-cover';

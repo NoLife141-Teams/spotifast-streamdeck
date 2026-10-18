@@ -186,3 +186,14 @@ test('absolute volume is isolated, bounded, and preserves other profile settings
   }
   assert.equal(inspector({ action: 'volumeup' }).element('absoluteVolume').hidden, true);
 });
+
+test('seek settings are isolated, normalized, and preserve profile fields', () => {
+  const { element, sent } = inspector({ action: 'seekback' });
+  assert.equal(element('seek').hidden, false); assert.equal(element('seekSeconds').value, 10);
+  for (const [value, expected] of [['', 10], ['Infinity', 10], ['0', 1], ['25.5', 26], ['99999', 3600]]) {
+    element('seekSeconds').value = value; element('seekSeconds').onchange();
+    assert.equal(sent('setSettings').at(-1).payload.seekSeconds, expected);
+    assert.equal(sent('setSettings').at(-1).payload.preserved, 'keep');
+  }
+  assert.equal(inspector({ action: 'restart' }).element('seek').hidden, true);
+});

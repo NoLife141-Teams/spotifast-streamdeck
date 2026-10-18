@@ -14,6 +14,9 @@ var actions = [
   ["playpause","Play / Pause (icon)","play"],
   ["next","Next","next"],
   ["previous","Previous","previous"],
+  ["seekback","Seek backward","previous"],
+  ["seekforward","Seek forward","next"],
+  ["restart","Restart track","previous"],
   ["nowplaying","Play / Pause with artwork","music"],
   ["volumeup","Volume +","volumeup"],
   ["setvolume","Set volume","volumeup"],
@@ -32,7 +35,8 @@ function parseNowPlaying(raw) {
   if (!["stopped", "playing", "paused"].includes(state2)) throw new LocalizedError("unknownResponse");
   if (state2 !== "stopped" && fields.length < 9) throw new LocalizedError("incompleteResponse");
   const numeric = (value) => Number.isFinite(Number(value)) ? Math.max(0, Number(value)) : 0;
-  return { state: state2, title, artists, album, position: numeric(position), duration: numeric(duration3), volume: fields.length > 6 ? Math.min(100, numeric(volume)) : null, shuffle: ["on", "true", "yes", "1"].includes(shuffle), repeat, artUrl, saved, device };
+  const timing = value => /^\d+$/.test(value) && Number.isSafeInteger(Number(value)) ? Number(value) : null;
+  return { state: state2, title, artists, album, position: timing(position), duration: timing(duration3), volume: fields.length > 6 ? Math.min(100, numeric(volume)) : null, shuffle: ["on", "true", "yes", "1"].includes(shuffle), repeat, artUrl, saved, device };
 }
 function volumeStep(settings2 = {}) {
   const step = Number(settings2.step ?? 5);
@@ -42,6 +46,24 @@ function absoluteVolume(settings = {}) {
   const value = settings.volumePercent;
   const number = value === undefined || String(value).trim() === '' ? 50 : Number(value);
   return Number.isFinite(number) ? Math.max(0, Math.min(100, Math.round(number))) : 50;
+}
+function seekSeconds(settings = {}) {
+  const value = settings.seekSeconds;
+  const number = value === undefined || String(value).trim() === '' ? 10 : Number(value);
+  return Number.isFinite(number) ? Math.max(1, Math.min(3600, Math.round(number))) : 10;
+}
+function seekTrack(snapshot) {
+  if (!snapshot || !['playing', 'paused'].includes(snapshot.state) || !snapshot.title ||
+    !Number.isSafeInteger(snapshot.duration) || snapshot.duration <= 0 ||
+    !Number.isSafeInteger(snapshot.position) || snapshot.position < 0) return undefined;
+  return JSON.stringify([snapshot.title, snapshot.artists, snapshot.album, snapshot.artUrl, snapshot.duration, snapshot.device]);
+}
+function seekTarget(args, snapshot) {
+  if (!seekTrack(snapshot)) throw new LocalizedError('seekUnavailable');
+  if (!['seek', 'seek-to'].includes(args?.[0]) || !Number.isSafeInteger(Number(args[1])) ||
+      (args[0] === 'seek-to' && Number(args[1]) !== 0) || Math.abs(Number(args[1])) > 3600) throw new LocalizedError('unknownAction');
+  const target = args[0] === 'seek-to' ? 0 : snapshot.position + Number(args[1]) * 1000;
+  return ['seek-to', String(Math.floor(Math.max(0, Math.min(snapshot.duration, target)) / 1000))];
 }
 function remainingTime(snapshot, elapsedMs = 0) {
   if (!snapshot || snapshot.state === 'stopped' || !Number.isFinite(snapshot.duration) || snapshot.duration <= 0 || !Number.isFinite(snapshot.position)) return undefined;
@@ -63,6 +85,8 @@ function commandFor(id, settings2 = {}, ticks, desiredState) {
   }
   const simple = { playpause: "play-pause", nowplaying: "play-pause", next: "next", previous: "previous", mute: "mute", shuffle: "shuffle", repeat: "repeat", like: "like", open: "show" };
   if (simple[id]) return [simple[id]];
+  if (["seekback", "seekforward"].includes(id)) return ["seek", String((id === "seekback" ? -1 : 1) * seekSeconds(settings2))];
+  if (id === "restart") return ["seek-to", "0"];
   if (id === "setvolume") return ["volume", String(absoluteVolume(settings2))];
   if (id === "playlist") return ["play-uri", spotifyUri(settings2.uri)];
   if (id === "volumeup" || id === "volumedown") return [id === "volumeup" ? "volume-up" : "volume-down", String(volumeStep(settings2))];
@@ -132,6 +156,7 @@ var Spotifast = class {
   customPath = "";
   cachedPath;
   configuration = 0;
+  trackRevision = 0;
   constructor({ queue = new CommandQueue(), executeFile = execute, spawnFile = spawn } = {}) {
     this.queue = queue;
     this.executeFile = executeFile;
@@ -192,13 +217,36 @@ var Spotifast = class {
         if (!fresh.length) throw new LocalizedError('commandExpired');
         queuedArgs[1] = String(Math.min(100, fresh.reduce((sum, part) => sum + part.amount, 0)));
       }
+      if (['next', 'previous', 'play-uri', 'transfer'].includes(queuedArgs[0])) this.trackRevision++;
       // Only the short-lived status CLI gets the smaller budget; writes stay serialized.
       const { stdout } = await this.executeFile(exe, queuedArgs, { windowsHide: true, timeout: snapshot ? 1000 : 5000, maxBuffer: 1024 * 1024, encoding: "utf8", shell: false });
       return stdout;
     }, options);
   }
+  seek(args, { snapshot, ageMs = Infinity, valid = () => true } = {}) {
+    // A guarded seek occupies one queue slot for its read + write. Never queue
+    // an unguarded absolute position which might land on the following track.
+    const expected = seekTrack(snapshot), configuration = this.configuration, revision = this.trackRevision;
+    const expires = this.queue.now() + Math.max(0, 5000 - ageMs);
+    const current = () => configuration === this.configuration && revision === this.trackRevision &&
+      (snapshot.commandRevision === undefined || snapshot.commandRevision === this.trackRevision) && valid() && this.queue.now() <= expires;
+    if (!expected || !Number.isFinite(ageMs) || ageMs < 0 || ageMs > 5000) return Promise.reject(new LocalizedError('seekUnavailable'));
+    return this.queue.run(async () => {
+      if (!current()) throw new LocalizedError('seekStale');
+      const exe = await this.executable();
+      if (!current()) throw new LocalizedError('seekStale');
+      const options = { windowsHide: true, timeout: 1000, maxBuffer: 1024 * 1024, encoding: 'utf8', shell: false };
+      const fresh = parseNowPlaying((await this.executeFile(exe, ['now-playing', '--raw'], options)).stdout);
+      if (!current() || seekTrack(fresh) !== expected) throw new LocalizedError('seekStale');
+      // The upstream CLI uses whole seconds, not milliseconds. Clamp before
+      // flooring so neither malformed state nor a long seek can overshoot.
+      const target = seekTarget(args, fresh);
+      return (await this.executeFile(exe, target, { ...options, timeout: 5000 })).stdout;
+    }, { priority: 20, ordered: true, maxWait: 2500 });
+  }
   async snapshot() {
-    return parseNowPlaying(await this.run(["now-playing", "--raw"]));
+    const commandRevision = this.trackRevision;
+    return { ...parseNowPlaying(await this.run(["now-playing", "--raw"])), commandRevision };
   }
   open({ ordered = false } = {}) {
     return this.queue.run(async () => {
@@ -315,4 +363,4 @@ function shortText(value, max = 13) {
 }
 
 
-export {LocalizedError, UUID, actions, parseNowPlaying, remainingTime, volumeStep, absoluteVolume, spotifyUri, commandFor, CommandQueue, Spotifast, isArtworkUrl, ArtworkCache, shortText};
+export {LocalizedError, UUID, actions, parseNowPlaying, remainingTime, volumeStep, absoluteVolume, seekSeconds, seekTrack, seekTarget, spotifyUri, commandFor, CommandQueue, Spotifast, isArtworkUrl, ArtworkCache, shortText};

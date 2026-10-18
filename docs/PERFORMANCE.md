@@ -8,6 +8,8 @@ Run `npm ci`, then `npm run benchmark -- baseline.json` on an unchanged checkout
 
 Record commit, OS, Node version, processor model, power mode, Stream Deck/Spotifast versions, warm-up and sample duration alongside local results. The JSON excludes usernames, executable paths, track titles and device identifiers. Synthetic command latency does not include the Windows CLI, network, physical button or display. RSS is process-wide and cumulative between scenarios; use separate processes when comparing memory precisely. Do not compare timings from different machines as regressions.
 
+Each baseline scenario runs for at least one second and 20 samples so Windows CPU accounting has time to accumulate useful measurements. `samples` reports the actual iteration count. CPU percentage measures this continuous synthetic workload; it does not estimate idle CPU usage at the plugin's normal polling cadence.
+
 ## Windows process baseline
 
 Identify the plugin's Node process in Stream Deck's process tree. Run the read-only sampler, supplying that verified PID:

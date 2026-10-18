@@ -16,7 +16,7 @@ while ($clock.Elapsed.TotalSeconds -lt $Seconds) {
   Start-Sleep -Milliseconds 250
   $current = Get-Process -Id $ProcessId
   if ($current.StartTime.ToUniversalTime() -ne $identity) { throw 'Process identity changed; measurement discarded.' }
-  $samples += [ordered]@{ elapsedMs = $clock.Elapsed.TotalMilliseconds; cpuMs = $current.TotalProcessorTime.TotalMilliseconds - $initialCpu; workingSetBytes = $current.WorkingSet64; privateBytes = $current.PrivateMemorySize64 }
+  $samples += [pscustomobject][ordered]@{ elapsedMs = $clock.Elapsed.TotalMilliseconds; cpuMs = $current.TotalProcessorTime.TotalMilliseconds - $initialCpu; workingSetBytes = $current.WorkingSet64; privateBytes = $current.PrivateMemorySize64 }
 }
 $clock.Stop()
 $report = [ordered]@{

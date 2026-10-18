@@ -14,6 +14,7 @@ export function createRuntime(streamDeck, {
   let state, online = false, refreshing, refreshAgain = false, configured = false, configuration = 0;
   let lastError = '', uiSession = 0, refreshTimer;
   const uiRevisions = new Map(), diagnostics = createDiagnostics();
+  let diagnosticOnline = false, diagnosticHasPlayback = false;
   let failures = 0, retryRevision = 0;
   let sampledAt = 0, animationInterval, animationPeriod, animating, started = false;
   let playbackRequest, preview;
@@ -64,11 +65,16 @@ export function createRuntime(streamDeck, {
       if (visible.get(entry.action.id) === entry) showPlaybackFeedback(entry, snapshot.state, snapshot);
     }
   }
+  function updateDiagnosticConnection(snapshot) {
+    diagnosticOnline = Boolean(snapshot);
+    diagnosticHasPlayback = diagnosticOnline && Boolean(snapshot.title) && snapshot.state !== 'stopped';
+  }
   function configure(settings = {}) {
     resetPolling();
     client.configure(settings.exePath ?? '');
     t = translations.createTranslator(translations.resolveLanguage(settings.language, streamDeck.info.application.language));
     configuration++;
+    updateDiagnosticConnection();
     resetPlaybackFeedback();
     configured = true;
     resolveConfigured();
@@ -246,6 +252,7 @@ export function createRuntime(streamDeck, {
           if (!started || !visible.size) break;
           if (config !== configuration) { refreshAgain = true; continue; }
           state = next; sampledAt = now(); online = true; lastError = '';
+          updateDiagnosticConnection(next);
           diagnostics.recordSuccess('status');
           failures = 0;
           confirmPlayback(next);
@@ -254,6 +261,7 @@ export function createRuntime(streamDeck, {
           if (config !== configuration) { refreshAgain = true; continue; }
           if (retry === retryRevision) failures = Math.min(failures + 1, 4);
           online = false;
+          updateDiagnosticConnection();
           diagnostics.recordError(error, 'status');
           resetPlaybackFeedback();
           const message = error.message ?? t('unavailable');
@@ -373,7 +381,7 @@ export function createRuntime(streamDeck, {
     const report = diagnostics.snapshot({
       pluginVersion: streamDeck.info.plugin?.version, hostVersion: streamDeck.info.application.version,
       upstreamVersion, detected, pathMode: client.customPath ? 'custom' : 'automatic',
-      online, hasPlayback: online && Boolean(state?.title) && state?.state !== 'stopped'
+      online: diagnosticOnline, hasPlayback: diagnosticHasPlayback
     });
     await sendStatus(token, { type: 'diagnostics', report });
   }
@@ -383,22 +391,27 @@ export function createRuntime(streamDeck, {
     if (!['open', 'status', 'devices'].includes(event.payload?.type)) return;
     const token = inspectorToken(event.action, event.payload.requestId, event.payload.type === 'devices' ? 'devices' : 'status');
     if (!token) return;
+    let config;
     try {
       await ready;
       resetPolling();
+      config = configuration;
       if (event.payload.type === 'devices') {
-        const config = configuration;
         const devices = await client.devices({ valid: () => started && config === configuration && currentInspector(token) });
         await sendStatus(token, { type: 'devices', devices, messageKey: devices.length ? 'devicesRefreshed' : 'devicesEmpty' });
         return;
       }
       if (event.payload.type === 'open') await client.open();
-      let config, snapshot;
+      let snapshot;
       do { config = configuration; snapshot = await client.snapshot(); } while (config !== configuration && currentInspector(token));
+      if (config === configuration) updateDiagnosticConnection(snapshot);
       diagnostics.recordSuccess('inspector');
       await sendStatus(token, statusPayload(true, snapshot.title ? 'nowPlaying' : 'connected', snapshot.title, snapshot.device));
       if (event.payload.type === 'open') await refresh();
-    } catch (error) { diagnostics.recordError(error, 'inspector'); await sendStatus(token, event.payload.type === 'devices' ? { type: 'devices', devices: [], messageKey: userError(error), failed: true } : statusPayload(false, userError(error))); }
+    } catch (error) {
+      if (event.payload.type !== 'devices' && config === configuration) updateDiagnosticConnection();
+      diagnostics.recordError(error, 'inspector'); await sendStatus(token, event.payload.type === 'devices' ? { type: 'devices', devices: [], messageKey: userError(error), failed: true } : statusPayload(false, userError(error)));
+    }
     finally { if (!refreshing) schedulePoll(); }
   }
   streamDeck.ui.onDidAppear(() => { uiSession++; uiRevisions.clear(); preview = undefined; });
@@ -460,6 +473,7 @@ export function createRuntime(streamDeck, {
     resetPolling();
     client.configure(client.customPath);
     configuration++;
+    updateDiagnosticConnection();
     resetPlaybackFeedback();
     for (const entry of visible.values()) invalidate(entry);
     refresh().catch(report);

@@ -27,6 +27,7 @@ var actions = [
   ["like","Favorite","heart"],
   ["playlist","Play Spotify link","playlist"],
   ["open","Open Spotifast","music"],
+  ["device","Playback device","music"],
   ["volume","Volume (dial)","volumeup"]
 ];
 function parseNowPlaying(raw) {
@@ -65,6 +66,23 @@ function seekTarget(args, snapshot) {
   const target = args[0] === 'seek-to' ? 0 : snapshot.position + Number(args[1]) * 1000;
   return ['seek-to', String(Math.floor(Math.max(0, Math.min(snapshot.duration, target)) / 1000))];
 }
+function deviceId(value) {
+  if (typeof value !== 'string' || !/^[A-Za-z0-9_-]{1,64}$/.test(value)) throw new LocalizedError('deviceUnconfigured');
+  return value;
+}
+function parseDevices(raw) {
+  let devices;
+  try { devices = JSON.parse(String(raw)); } catch { throw new LocalizedError('devicesInvalid'); }
+  if (!Array.isArray(devices) || devices.length > 256) throw new LocalizedError('devicesInvalid');
+  const ids = new Set();
+  return devices.map(device => {
+    if (!device || typeof device !== 'object' || typeof device.name !== 'string' || device.name.length > 256 ||
+        typeof device.kind !== 'string' || device.kind.length > 64 || typeof device.active !== 'boolean' ||
+        typeof device.id !== 'string' || !/^[A-Za-z0-9_-]{1,64}$/.test(device.id) || ids.has(device.id)) throw new LocalizedError('devicesInvalid');
+    ids.add(device.id);
+    return { id: device.id, name: device.name.replace(/[\u0000-\u001f\u007f]/g, ' ').trim(), kind: device.kind.replace(/[\u0000-\u001f\u007f]/g, ' ').trim(), active: device.active };
+  });
+}
 function remainingTime(snapshot, elapsedMs = 0) {
   if (!snapshot || snapshot.state === 'stopped' || !Number.isFinite(snapshot.duration) || snapshot.duration <= 0 || !Number.isFinite(snapshot.position)) return undefined;
   const elapsed = snapshot.state === 'playing' && Number.isFinite(elapsedMs) ? Math.max(0, Math.min(5000, elapsedMs)) : 0;
@@ -86,6 +104,7 @@ function commandFor(id, settings2 = {}, ticks, desiredState) {
   const simple = { playpause: "play-pause", nowplaying: "play-pause", next: "next", previous: "previous", mute: "mute", shuffle: "shuffle", repeat: "repeat", like: "like", open: "show" };
   if (simple[id]) return [simple[id]];
   if (["seekback", "seekforward"].includes(id)) return ["seek", String((id === "seekback" ? -1 : 1) * seekSeconds(settings2))];
+  if (id === "device") return ["transfer", deviceId(settings2.deviceId)];
   if (id === "restart") return ["seek-to", "0"];
   if (id === "setvolume") return ["volume", String(absoluteVolume(settings2))];
   if (id === "playlist") return ["play-uri", spotifyUri(settings2.uri)];
@@ -157,10 +176,11 @@ var Spotifast = class {
   cachedPath;
   configuration = 0;
   trackRevision = 0;
-  constructor({ queue = new CommandQueue(), executeFile = execute, spawnFile = spawn } = {}) {
+  constructor({ queue = new CommandQueue(), executeFile = execute, spawnFile = spawn, sleep = ms => new Promise(resolve => setTimeout(resolve, ms)) } = {}) {
     this.queue = queue;
     this.executeFile = executeFile;
     this.spawnFile = spawnFile;
+    this.sleep = sleep;
   }
   configure(customPath = "") {
     const next = String(customPath).trim();
@@ -222,6 +242,43 @@ var Spotifast = class {
       const { stdout } = await this.executeFile(exe, queuedArgs, { windowsHide: true, timeout: snapshot ? 1000 : 5000, maxBuffer: 1024 * 1024, encoding: "utf8", shell: false });
       return stdout;
     }, options);
+  }
+  async readDeviceList(exe, current) {
+    const read = async () => {
+      if (!current()) throw new LocalizedError('deviceStale');
+      const result = await this.executeFile(exe, ['devices', '--raw'], { windowsHide: true, timeout: 1000, maxBuffer: 1024 * 1024, encoding: 'utf8', shell: false });
+      if (!current()) throw new LocalizedError('deviceStale');
+      return parseDevices(result.stdout);
+    };
+    // Upstream returns its published cache and requests refresh for NEXT read.
+    // It exposes no completion marker; allow a bounded refresh window then read
+    // again. Never claim this is an authoritative online-device inventory.
+    await read();
+    await this.sleep(500);
+    return read();
+  }
+  devices({ valid = () => true } = {}) {
+    const configuration = this.configuration;
+    const current = () => configuration === this.configuration && valid();
+    return this.queue.run(async () => {
+      if (!current()) throw new LocalizedError('deviceStale');
+      return this.readDeviceList(await this.executable(), current);
+    }, { key: 'devices', priority: -10 });
+  }
+  transfer(id, { valid = () => true } = {}) {
+    try { deviceId(id); } catch (error) { return Promise.reject(error); }
+    const configuration = this.configuration;
+    const current = () => configuration === this.configuration && valid();
+    return this.queue.run(async () => {
+      if (!current()) throw new LocalizedError('deviceStale');
+      const exe = await this.executable(), devices = await this.readDeviceList(exe, current);
+      const selected = devices.find(device => device.id === id);
+      if (!selected) throw new LocalizedError('deviceUnavailable');
+      if (!current()) throw new LocalizedError('deviceStale');
+      // Reassert the explicit target even if a cached list marks it active.
+      this.trackRevision++;
+      return (await this.executeFile(exe, ['transfer', '--', id], { windowsHide: true, timeout: 5000, maxBuffer: 1024 * 1024, encoding: 'utf8', shell: false })).stdout;
+    }, { priority: 20, ordered: true });
   }
   seek(args, { snapshot, ageMs = Infinity, valid = () => true } = {}) {
     // A guarded seek occupies one queue slot for its read + write. Never queue
@@ -363,4 +420,4 @@ function shortText(value, max = 13) {
 }
 
 
-export {LocalizedError, UUID, actions, parseNowPlaying, remainingTime, volumeStep, absoluteVolume, seekSeconds, seekTrack, seekTarget, spotifyUri, commandFor, CommandQueue, Spotifast, isArtworkUrl, ArtworkCache, shortText};
+export {LocalizedError, UUID, actions, parseNowPlaying, remainingTime, volumeStep, absoluteVolume, seekSeconds, seekTrack, seekTarget, deviceId, parseDevices, spotifyUri, commandFor, CommandQueue, Spotifast, isArtworkUrl, ArtworkCache, shortText};

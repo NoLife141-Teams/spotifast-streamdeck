@@ -1,7 +1,7 @@
 import { artworkSettings, playbackDisplay, playbackOverlays } from './playback-display.mjs';
 import { createDiagnostics } from './diagnostics.mjs';
 import { ArtworkRenderer } from './artwork.mjs';
-import { UUID, actions, Spotifast, ArtworkCache, shortText, commandFor, absoluteVolume, seekSeconds, seekTrack } from './core.mjs';
+import { LocalizedError, UUID, actions, Spotifast, ArtworkCache, shortText, commandFor, absoluteVolume, seekSeconds, seekTrack } from './core.mjs';
 import translations from '../streamdeck/ui/i18n.js';
 import spotifyLinks from '../streamdeck/ui/spotify.js';
 
@@ -23,8 +23,8 @@ export function createRuntime(streamDeck, {
   const suffix = action => action.manifestId.slice(UUID.length + 1);
   const report = error => streamDeck.logger.error(error);
   const userError = error => error.messageKey || (error.killed ? 'commandTimeout' : 'commandFailed');
-  const statusPayload = (connected, messageKey, title) => ({
-    type: 'status', online: connected, messageKey, trackTitle: title, message: t(messageKey, { title })
+  const statusPayload = (connected, messageKey, title, activeDevice) => ({
+    type: 'status', online: connected, messageKey, trackTitle: title, activeDevice, message: t(messageKey, { title })
   });
   const invalidate = entry => { entry.signature = undefined; entry.renderRevision = (entry.renderRevision || 0) + 1; };
   const trackKey = snapshot => JSON.stringify([snapshot?.title, snapshot?.artists, snapshot?.album, snapshot?.artUrl]);
@@ -142,6 +142,7 @@ export function createRuntime(streamDeck, {
       if (['volumeup', 'volumedown', 'mute'].includes(id)) title = snapshot.volume === null ? '' : snapshot.volume + '%';
       if (['seekback', 'seekforward'].includes(id)) title = (id === 'seekback' ? '−' : '+') + seekSeconds(settings) + 's';
       if (id === 'restart') title = '0:00';
+      if (id === 'device') title = shortText(snapshot.device || t('noDevice'), 18);
       if (id === 'setvolume') title = absoluteVolume(settings) + '%';
       if (id === 'volume') feedback = { title: shortText(snapshot.title || t('volumeTitle'), 24), value: snapshot.volume === null ? '—' : snapshot.volume + '%', indicator: snapshot.volume ?? 0, icon: entry.artImage ?? 'imgs/volumeup.png' };
     }
@@ -290,6 +291,18 @@ export function createRuntime(streamDeck, {
   }
   async function perform(event, args, launch = false) {
     const token = inspectorToken(event.action);
+    // Capture the pressed key's identity before the first await. Settings or
+    // profile events can otherwise rebind an old command to a new selection.
+    const originEntry = visible.get(event.action.id), originConfiguration = configuration;
+    const transferTarget = args?.[0] === 'transfer' ? args[1] : undefined;
+    const pressedAt = now();
+    const seekRequest = ['seek', 'seek-to'].includes(args?.[0]) ? {
+      snapshot: state, track: seekTrack(state), ageMs: online ? pressedAt - sampledAt : Infinity
+    } : undefined;
+    const currentSeek = () => started && configuration === originConfiguration &&
+      (!originEntry || visible.get(event.action.id) === originEntry) && seekTrack(state) === seekRequest?.track;
+    const currentTransfer = () => started && configuration === originConfiguration &&
+      visible.get(event.action.id) === originEntry && (!originEntry || originEntry.settings.deviceId === transferTarget);
     let request;
     try {
       await ready;
@@ -306,10 +319,12 @@ export function createRuntime(streamDeck, {
       }
       const ordered = event.payload?.isInMultiAction === true;
       if (launch || suffix(event.action) === 'open') await client.open({ ordered });
-      else if (['seek', 'seek-to'].includes(args?.[0])) {
-        const config = configuration, expected = seekTrack(state), entry = visible.get(event.action.id);
-        await client.seek(args, { snapshot: state, ageMs: online ? now() - sampledAt : Infinity,
-          valid: () => started && config === configuration && seekTrack(state) === expected && (!entry || visible.get(event.action.id) === entry) });
+      else if (args?.[0] === 'transfer') {
+        if (!currentTransfer()) throw new LocalizedError('deviceStale');
+        await client.transfer(transferTarget, { valid: currentTransfer });
+      } else if (['seek', 'seek-to'].includes(args?.[0])) {
+        if (!currentSeek()) throw new LocalizedError('seekStale');
+        await client.seek(args, { snapshot: seekRequest.snapshot, ageMs: seekRequest.ageMs + Math.max(0, now() - pressedAt), valid: currentSeek });
       } else await client.run(args, { ordered });
       diagnostics.recordSuccess(launch || suffix(event.action) === 'open' ? 'open' : 'command');
       if (!started) return;
@@ -373,24 +388,29 @@ export function createRuntime(streamDeck, {
   async function inspectorRequest(event) {
     if (event.payload?.type === 'preview') return previewRequest(event);
     if (event.payload?.type === 'diagnostics') return diagnosticRequest(event);
-    if (!['open', 'status'].includes(event.payload?.type)) return;
-    const token = inspectorToken(event.action, event.payload.requestId);
+    if (!['open', 'status', 'devices'].includes(event.payload?.type)) return;
+    const token = inspectorToken(event.action, event.payload.requestId, event.payload.type === 'devices' ? 'devices' : 'status');
     if (!token) return;
     let config;
     try {
       await ready;
       resetPolling();
       config = configuration;
+      if (event.payload.type === 'devices') {
+        const devices = await client.devices({ valid: () => started && config === configuration && currentInspector(token) });
+        await sendStatus(token, { type: 'devices', devices, messageKey: devices.length ? 'devicesRefreshed' : 'devicesEmpty' });
+        return;
+      }
       if (event.payload.type === 'open') await client.open();
       let snapshot;
       do { config = configuration; snapshot = await client.snapshot(); } while (config !== configuration && currentInspector(token));
       if (config === configuration) updateDiagnosticConnection(snapshot);
       diagnostics.recordSuccess('inspector');
-      await sendStatus(token, statusPayload(true, snapshot.title ? 'nowPlaying' : 'connected', snapshot.title));
+      await sendStatus(token, statusPayload(true, snapshot.title ? 'nowPlaying' : 'connected', snapshot.title, snapshot.device));
       if (event.payload.type === 'open') await refresh();
     } catch (error) {
-      if (config === configuration) updateDiagnosticConnection();
-      diagnostics.recordError(error, 'inspector'); await sendStatus(token, statusPayload(false, userError(error)));
+      if (event.payload.type !== 'devices' && config === configuration) updateDiagnosticConnection();
+      diagnostics.recordError(error, 'inspector'); await sendStatus(token, event.payload.type === 'devices' ? { type: 'devices', devices: [], messageKey: userError(error), failed: true } : statusPayload(false, userError(error)));
     }
     finally { if (!refreshing) schedulePoll(); }
   }

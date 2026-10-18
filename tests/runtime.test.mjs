@@ -1063,3 +1063,72 @@ test('a seek macro without its own visible entry still uses the originally sampl
   clock = 350; await flush();
   assert.deepEqual(seeks, [{ args: ['seek', '10'], age: 250, title: 'Track' }]); assert.equal(macro.alerts, 0); api.stop();
 });
+
+test('diagnostics reflect inspector connection checks without any visible keys', async () => {
+  const { api, client, messages, select } = await runtime();
+  const action = key('playlist'); select(action);
+  client.data = { ...client.data, state: 'playing', title: 'PrivateTrack' };
+  await api.inspectorRequest({ action, payload: { type: 'status' } });
+  assert.equal(messages.at(-1).online, true);
+  await api.inspectorRequest({ action, payload: { type: 'diagnostics' } });
+  const report = messages.at(-1).report;
+  assert.equal(api.visible.size, 0);
+  assert.equal(client.reads, 1, 'Diagnostics reuse the explicit status check without another player read');
+  assert.equal(report.connection, 'online');
+  assert.equal(report.playback, 'available');
+  assert.equal(report.status, null);
+  assert.doesNotMatch(JSON.stringify(report), /PrivateTrack/);
+
+  client.data = { ...client.data, state: 'stopped', title: '' };
+  await api.inspectorRequest({ action, payload: { type: 'status' } });
+  await api.inspectorRequest({ action, payload: { type: 'diagnostics' } });
+  assert.equal(messages.at(-1).report.connection, 'online');
+  assert.equal(messages.at(-1).report.status.category, 'no-playback');
+
+  client.snapshotError = new Error('Disconnected');
+  await api.inspectorRequest({ action, payload: { type: 'status' } });
+  await api.inspectorRequest({ action, payload: { type: 'diagnostics' } });
+  assert.equal(messages.at(-1).report.connection, 'offline');
+  assert.equal(messages.at(-1).report.playback, 'none');
+  api.stop();
+});
+
+test('a stale inspector result cannot mark a new diagnostic configuration online', async () => {
+  const { api, client, messages, select } = await runtime();
+  const action = key('playlist'), other = key('playlist', 'other'); select(action);
+  await api.inspectorRequest({ action, payload: { type: 'status' } });
+  const pending = deferred(); client.snapshot = () => pending.promise;
+  const request = api.inspectorRequest({ action, payload: { type: 'status' } });
+  await flush();
+  api.configure({ exePath: 'D:/New/spotifast.exe' }); select(other);
+  pending.resolve({ ...client.data, title: 'Old configuration track' }); await request;
+  await api.inspectorRequest({ action: other, payload: { type: 'diagnostics' } });
+  assert.equal(messages.at(-1).report.connection, 'offline');
+  assert.equal(messages.at(-1).report.playback, 'none');
+  api.stop();
+});
+
+test('device inventory results preserve the diagnostic state from the latest connection check', async () => {
+  const { api, client, messages, select } = await runtime();
+  const action = key('device'); select(action);
+  client.data = { ...client.data, state: 'playing', title: 'PrivateTrack', device: 'PrivateDevice' };
+  await api.inspectorRequest({ action, payload: { type: 'status' } });
+  client.devices = async () => { throw new LocalizedError('devicesInvalid'); };
+  await api.inspectorRequest({ action, payload: { type: 'devices' } });
+  assert.equal(messages.at(-1).failed, true);
+  await api.inspectorRequest({ action, payload: { type: 'diagnostics' } });
+  assert.equal(messages.at(-1).report.connection, 'online');
+  assert.equal(messages.at(-1).report.playback, 'available');
+  assert.doesNotMatch(JSON.stringify(messages.at(-1).report), /PrivateTrack|PrivateDevice/);
+
+  client.snapshotError = new Error('Disconnected');
+  await api.inspectorRequest({ action, payload: { type: 'status' } });
+  client.devices = async () => [{ id: 'speaker', name: 'PrivateDevice', active: true }];
+  await api.inspectorRequest({ action, payload: { type: 'devices' } });
+  await api.inspectorRequest({ action, payload: { type: 'diagnostics' } });
+  assert.equal(messages.at(-1).report.connection, 'offline');
+  assert.equal(messages.at(-1).report.playback, 'none');
+  assert.doesNotMatch(JSON.stringify(messages.at(-1).report), /PrivateTrack|PrivateDevice/);
+  assert.equal(client.reads, 2, 'Device inventories and diagnostics do not add connection reads');
+  api.stop();
+});

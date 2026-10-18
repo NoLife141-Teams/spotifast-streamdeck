@@ -1,5 +1,5 @@
 import { ArtworkRenderer } from './artwork.mjs';
-import { UUID, actions, Spotifast, ArtworkCache, shortText, commandFor, remainingTime, absoluteVolume } from './core.mjs';
+import { UUID, actions, Spotifast, ArtworkCache, shortText, commandFor, remainingTime, absoluteVolume, seekSeconds, seekTrack } from './core.mjs';
 import translations from '../streamdeck/ui/i18n.js';
 
 export function createRuntime(streamDeck, {
@@ -127,6 +127,8 @@ export function createRuntime(streamDeck, {
         entry.lastAnimationAt ??= clock;
       }
       if (['volumeup', 'volumedown', 'mute'].includes(id)) title = snapshot.volume === null ? '' : snapshot.volume + '%';
+      if (['seekback', 'seekforward'].includes(id)) title = (id === 'seekback' ? '−' : '+') + seekSeconds(settings) + 's';
+      if (id === 'restart') title = '0:00';
       if (id === 'setvolume') title = absoluteVolume(settings) + '%';
       if (id === 'volume') feedback = { title: shortText(snapshot.title || t('volumeTitle'), 24), value: snapshot.volume === null ? '—' : snapshot.volume + '%', indicator: snapshot.volume ?? 0, icon: entry.artImage ?? 'imgs/volumeup.png' };
     }
@@ -283,7 +285,11 @@ export function createRuntime(streamDeck, {
       }
       const ordered = event.payload?.isInMultiAction === true;
       if (launch || suffix(event.action) === 'open') await client.open({ ordered });
-      else await client.run(args, { ordered });
+      else if (['seek', 'seek-to'].includes(args?.[0])) {
+        const config = configuration, expected = seekTrack(state), entry = visible.get(event.action.id);
+        await client.seek(args, { snapshot: state, ageMs: online ? now() - sampledAt : Infinity,
+          valid: () => started && config === configuration && seekTrack(state) === expected && (!entry || visible.get(event.action.id) === entry) });
+      } else await client.run(args, { ordered });
       if (!started) return;
       if (request && playbackRequest === request) { request.accepted = true; request.until = now() + 5000; }
       const entry = visible.get(event.action.id);
@@ -336,7 +342,8 @@ export function createRuntime(streamDeck, {
     const next = event.payload.settings ?? {};
     const visual = settings => [settings.showText !== false, settings.scrollText !== false, settings.showRemaining !== false, settings.captionLayout === 'twoLines'];
     const changed = (suffix(entry.action) === 'nowplaying' && visual(entry.settings).some((value, index) => value !== visual(next)[index])) ||
-      (suffix(entry.action) === 'setvolume' && absoluteVolume(entry.settings) !== absoluteVolume(next));
+      (suffix(entry.action) === 'setvolume' && absoluteVolume(entry.settings) !== absoluteVolume(next)) ||
+      (['seekback', 'seekforward'].includes(suffix(entry.action)) && seekSeconds(entry.settings) !== seekSeconds(next));
     entry.settings = next;
     if (!changed) return;
     invalidate(entry);

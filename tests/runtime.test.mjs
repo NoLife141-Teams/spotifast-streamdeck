@@ -796,3 +796,14 @@ test('absolute volume key forwards the configured value and Multi Action FIFO in
   callbacks.onKeyDown({ action, payload: { settings: { volumePercent: 25 }, isInMultiAction: true, userDesiredState: 0 } }); await flush();
   assert.deepEqual(sent, [{ args: ['volume', '25'], options: { ordered: true } }]); api.stop();
 });
+
+test('seek uses guarded client execution and invalidates an in-flight request after profile disappearance', async () => {
+  let clock = 0; const { api, client, callbacks } = await runtime({ now: () => clock }); const action = key('seekforward');
+  client.data = { ...client.data, title: 'Track', position: 1000, duration: 100000 };
+  api.visible.set(action.id, { action, settings: {} }); await api.refresh();
+  let guarded; client.seek = async (args, options) => { guarded = { args, options }; };
+  clock = 200; callbacks.onKeyDown({ action, payload: { settings: {} } }); await flush();
+  assert.deepEqual(guarded.args, ['seek', '10']); assert.equal(guarded.options.ageMs, 200); assert.equal(guarded.options.valid(), true);
+  assert.equal(client.calls.length, 0);
+  callbacks.onWillDisappear({ action }); assert.equal(guarded.options.valid(), false); api.stop();
+});

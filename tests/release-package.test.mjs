@@ -50,7 +50,10 @@ test('release staging refuses an installer changed after testing or the wrong ru
   } finally { await rm(root, { recursive: true, force: true }); }
 });
 test('CI preserves required PR checks and gates publication on tag plus both runtime lanes', async () => {
-  const workflow = await readFile(new URL('../.github/workflows/check.yml', import.meta.url), 'utf8');
+  const source = await readFile(new URL('../.github/workflows/check.yml', import.meta.url), 'utf8');
+  // Git checks out CRLF on Windows; workflow semantics do not depend on EOLs.
+  const workflow = source.replace(/\r\n/g, '\n');
+  assert.equal(workflow.replace(/\n/g, '\r\n').replace(/\r\n/g, '\n'), workflow);
   assert.match(workflow, /branches: \[main\]/); assert.match(workflow, /tags: \['v\*'\]/); assert.match(workflow, /\n  pull_request:\n/);
   assert.match(workflow, /node: \[20, 22\]/); assert.match(workflow, /\n  check:\n[\s\S]*needs: plugin_checks/);
   assert.match(workflow, /\n  publish:\n    if: github.event_name == 'push' && startsWith\(github.ref, 'refs\/tags\/v'\)\n    needs: check/);

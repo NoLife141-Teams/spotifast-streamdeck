@@ -301,6 +301,60 @@
           "Touch": "Play / Pause"
         }
       }
+    },
+    {
+      "UUID": "rocks.spotifast.streamdeck.seekback",
+      "Name": "Seek backward",
+      "Icon": "imgs/previous",
+      "Tooltip": "Spotifast: Seek backward",
+      "PropertyInspectorPath": "ui/settings.html",
+      "Controllers": [
+        "Keypad"
+      ],
+      "States": [
+        {
+          "Image": "imgs/previous",
+          "TitleAlignment": "bottom",
+          "FontSize": 11
+        }
+      ],
+      "SupportedInMultiActions": true
+    },
+    {
+      "UUID": "rocks.spotifast.streamdeck.seekforward",
+      "Name": "Seek forward",
+      "Icon": "imgs/next",
+      "Tooltip": "Spotifast: Seek forward",
+      "PropertyInspectorPath": "ui/settings.html",
+      "Controllers": [
+        "Keypad"
+      ],
+      "States": [
+        {
+          "Image": "imgs/next",
+          "TitleAlignment": "bottom",
+          "FontSize": 11
+        }
+      ],
+      "SupportedInMultiActions": true
+    },
+    {
+      "UUID": "rocks.spotifast.streamdeck.restart",
+      "Name": "Restart track",
+      "Icon": "imgs/previous",
+      "Tooltip": "Spotifast: Restart track",
+      "PropertyInspectorPath": "ui/settings.html",
+      "Controllers": [
+        "Keypad"
+      ],
+      "States": [
+        {
+          "Image": "imgs/previous",
+          "TitleAlignment": "bottom",
+          "FontSize": 11
+        }
+      ],
+      "SupportedInMultiActions": true
     }
   ]
 }

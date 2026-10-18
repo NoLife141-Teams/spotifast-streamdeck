@@ -5,6 +5,13 @@
 })(typeof globalThis !== 'undefined' ? globalThis : this, function () {
   const messages = {
     en: {
+      diagnosticSeekUnavailable: 'Track position or duration is unavailable for seeking.', diagnosticStale: 'Playback or settings changed before this command could run.', diagnosticDeviceUnconfigured: 'No playback device has been selected for this key.',
+      showElapsed: 'Show elapsed track time', showProgress: 'Show track progress bar',
+      progressHint: 'Time and progress pause with playback. Progress hides when the duration is unknown.',
+      previewTitle: 'Artwork preview', previewWaiting: 'Waiting for the current player state.',
+      previewLive: 'Uses the current player state; changing the preview does not send playback commands.',
+      previewOffline: 'Spotifast is unavailable. Preview will return when playback status is available.',
+      previewNoPlayback: 'No current track. Time and progress appear when playback information is available.',
       diagnosticsTitle: 'Local diagnostic', diagnosticsRefresh: 'Preview diagnostic', diagnosticsCopy: 'Copy diagnostic',
       diagnosticsPrivacy: 'Preview before copying. No account details, paths, track or device identifiers are included. Nothing is sent automatically.',
       diagnosticsReady: 'Review the diagnostic below before sharing it.', diagnosticsCopied: 'Diagnostic copied.',
@@ -54,6 +61,13 @@
       dialTooltip: 'Turn: volume. Press: mute. Tap: play/pause.', rotate: 'Adjust volume', push: 'Mute', touch: 'Play / Pause'
     },
     fr: {
+      diagnosticSeekUnavailable: 'La position ou la durée du morceau est indisponible pour le déplacement.', diagnosticStale: 'La lecture ou les réglages ont changé avant l’exécution de la commande.', diagnosticDeviceUnconfigured: 'Aucun appareil de lecture n’est sélectionné pour cette touche.',
+      showElapsed: 'Afficher le temps écoulé du morceau', showProgress: 'Afficher la barre de progression',
+      progressHint: 'Le temps et la progression se figent en pause. La progression disparaît si la durée est inconnue.',
+      previewTitle: 'Aperçu de la pochette', previewWaiting: 'En attente de l’état actuel du lecteur.',
+      previewLive: 'Utilise l’état actuel du lecteur ; modifier l’aperçu n’envoie aucune commande de lecture.',
+      previewOffline: 'Spotifast est indisponible. L’aperçu revient lorsque l’état de lecture est disponible.',
+      previewNoPlayback: 'Aucun morceau en cours. Le temps et la progression apparaissent lorsque les informations sont disponibles.',
       diagnosticsTitle: 'Diagnostic local', diagnosticsRefresh: 'Afficher le diagnostic', diagnosticsCopy: 'Copier le diagnostic',
       diagnosticsPrivacy: 'Vérifie avant de copier. Aucun compte, chemin, identifiant de morceau ou d’appareil n’est inclus. Rien n’est envoyé automatiquement.',
       diagnosticsReady: 'Vérifie le diagnostic ci-dessous avant de le partager.', diagnosticsCopied: 'Diagnostic copié.',

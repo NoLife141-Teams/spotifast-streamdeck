@@ -160,3 +160,11 @@ test('all four allowed scopes survive and arbitrary scope types collapse to insp
     assert.equal(diagnostics.snapshot().lastSuccess.scope, 'inspector');
   }
 });
+
+test('seek and device feature failures retain actionable categories without raw details', () => {
+  for (const [messageKey, category] of [['seekUnavailable', 'seek-unavailable'], ['seekStale', 'stale-state'], ['deviceStale', 'stale-state'], ['deviceUnconfigured', 'device-unconfigured'], ['devicesInvalid', 'invalid-response']]) {
+    const value = diagnosticCategory({ messageKey, message: 'private-track private-device /Users/Person/token' });
+    assert.equal(value.category, category);
+    assert.doesNotMatch(JSON.stringify(value), /private-track|private-device|Person|token/);
+  }
+});

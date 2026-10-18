@@ -1,6 +1,7 @@
+import { artworkSettings, playbackDisplay, playbackOverlays } from './playback-display.mjs';
 import { createDiagnostics } from './diagnostics.mjs';
 import { ArtworkRenderer } from './artwork.mjs';
-import { UUID, actions, Spotifast, ArtworkCache, shortText, commandFor, remainingTime, absoluteVolume, seekSeconds, seekTrack } from './core.mjs';
+import { UUID, actions, Spotifast, ArtworkCache, shortText, commandFor, absoluteVolume, seekSeconds, seekTrack } from './core.mjs';
 import translations from '../streamdeck/ui/i18n.js';
 import spotifyLinks from '../streamdeck/ui/spotify.js';
 
@@ -16,7 +17,7 @@ export function createRuntime(streamDeck, {
   let diagnosticOnline = false, diagnosticHasPlayback = false;
   let failures = 0, retryRevision = 0;
   let sampledAt = 0, animationInterval, animationPeriod, animating, started = false;
-  let playbackRequest;
+  let playbackRequest, preview;
   let resolveConfigured;
   const ready = new Promise(resolve => { resolveConfigured = resolve; });
   const suffix = action => action.manifestId.slice(UUID.length + 1);
@@ -119,14 +120,14 @@ export function createRuntime(streamDeck, {
         const clock = now();
         const captionKey = JSON.stringify([snapshot.title, snapshot.artists, snapshot.album, snapshot.duration, snapshot.artUrl, settings.showText, settings.scrollText, settings.captionLayout]);
         if (entry.captionKey !== captionKey) { entry.captionKey = captionKey; entry.captionStartedAt = clock; entry.lastAnimationAt = undefined; }
-        const remainingMs = settings.showRemaining !== false ? remainingTime(snapshot, clock - sampledAt) : undefined;
+        const overlays = playbackOverlays(snapshot, settings, clock - sampledAt);
         if (entry.playbackFeedback && (clock >= entry.playbackFeedback.until || entry.playbackFeedback.state !== snapshot.state || entry.playbackFeedback.track !== trackKey(snapshot))) clearPlaybackFeedback(entry);
         const playbackFeedback = entry.playbackFeedback;
         const captionTitle = snapshot.title || t('noTrack'), captionArtists = snapshot.title ? snapshot.artists : '';
         const options = {
           showText: settings.showText !== false, scrollText: settings.scrollText !== false,
           captionLayout: settings.captionLayout === 'twoLines' ? 'twoLines' : 'compact',
-          elapsedMs: Math.max(0, clock - entry.captionStartedAt), remainingMs,
+          elapsedMs: Math.max(0, clock - entry.captionStartedAt), ...overlays,
           playbackFeedback: playbackFeedback?.state,
           feedbackOpacity: playbackFeedback ? Math.min(1, Math.max(0, (playbackFeedback.until - clock) / 200)) : undefined
         };
@@ -134,7 +135,7 @@ export function createRuntime(streamDeck, {
         const scrolling = await artworkRenderer.hasScrollingText(captionTitle, captionArtists, options);
         if (!current()) return;
         entry.scrolling = scrolling;
-        entry.remainingMs = remainingMs;
+        Object.assign(entry, overlays);
         entry.lastAnimationAt ??= clock;
       }
       if (id === 'playlist') title = spotifyLinks.shortcutName(settings.displayName);
@@ -161,6 +162,7 @@ export function createRuntime(streamDeck, {
   async function renderEntries(entries, image, url) {
     const results = await Promise.allSettled(entries.map(entry => render(entry, image, url)));
     for (const result of results) if (result.status === 'rejected') report(result.reason);
+    if (entries.length) await renderPreview();
   }
   function entryAnimationPeriod(entry, clock = now()) {
     if (!started || !online || suffix(entry.action) !== 'nowplaying') return undefined;
@@ -168,10 +170,12 @@ export function createRuntime(streamDeck, {
     if (entry.playbackFeedback) return 100;
     if (entry.scrolling && entry.settings.showText !== false && entry.settings.scrollText !== false) return 100;
     const elapsed = Math.max(0, clock - sampledAt);
-    const remaining = remainingTime(state, elapsed);
-    // Render the final value before a finished or stale countdown goes idle.
-    if (entry.settings.showRemaining !== false && state.state === 'playing' && remaining !== undefined &&
-      ((elapsed < 5000 && remaining > 0) || entry.remainingMs > remaining)) return 1000;
+    const display = playbackDisplay(state, elapsed), overlays = playbackOverlays(state, entry.settings, elapsed);
+    const hasClock = Object.values(overlays).some(value => value !== undefined);
+    const finalFrame = Object.entries(overlays).some(([key, value]) => value !== undefined && entry[key] !== value);
+    // Every optional clock shares the existing one-second animation lane,
+    // including its last clamped frame before a stale sample goes idle.
+    if (state.state === 'playing' && hasClock && ((elapsed < 5000 && display.remainingMs !== 0) || finalFrame)) return 1000;
     return undefined;
   }
   function animate() {
@@ -320,6 +324,32 @@ export function createRuntime(streamDeck, {
     }
   }
   async function performInvalid(event, error) { await failed(event, error, inspectorToken(event.action)); }
+  async function renderPreview() {
+    const request = preview;
+    if (!request || !currentInspector(request.token)) return;
+    const snapshot = state, config = configuration, connected = online;
+    const entry = visible.get(request.token.actionId), clock = now();
+    let image;
+    if (connected) {
+      const options = { ...request.settings, ...playbackOverlays(snapshot, request.settings, clock - sampledAt),
+        elapsedMs: Math.max(0, clock - (entry?.captionStartedAt ?? request.startedAt)) };
+      const cover = entry?.artUrl === snapshot.artUrl ? entry.artImage : undefined;
+      image = await artworkRenderer.render(cover, snapshot.title || t('noTrack'), snapshot.title ? snapshot.artists : '', options);
+    }
+    if (request !== preview || snapshot !== state || config !== configuration || connected !== online) return;
+    const messageKey = !connected ? 'previewOffline' : !snapshot.title || snapshot.state === 'stopped' ? 'previewNoPlayback' : 'previewLive';
+    if (request.image === image && request.messageKey === messageKey) return;
+    await sendStatus(request.token, { type: 'preview', online: connected, image, messageKey });
+    request.image = image; request.messageKey = messageKey;
+  }
+  async function previewRequest(event) {
+    if (suffix(event.action) !== 'nowplaying') return;
+    const token = inspectorToken(event.action, event.payload.requestId, 'preview');
+    if (!token) return;
+    // Preview settings are allowlisted and never persisted or applied to keys.
+    preview = { token, settings: artworkSettings(event.payload.settings ?? visible.get(event.action.id)?.settings), startedAt: now() };
+    await renderPreview();
+  }
   async function diagnosticRequest(event) {
     const token = inspectorToken(event.action, event.payload.requestId, 'diagnostics');
     if (!token) return;
@@ -341,6 +371,7 @@ export function createRuntime(streamDeck, {
     await sendStatus(token, { type: 'diagnostics', report });
   }
   async function inspectorRequest(event) {
+    if (event.payload?.type === 'preview') return previewRequest(event);
     if (event.payload?.type === 'diagnostics') return diagnosticRequest(event);
     if (!['open', 'status'].includes(event.payload?.type)) return;
     const token = inspectorToken(event.action, event.payload.requestId);
@@ -363,12 +394,12 @@ export function createRuntime(streamDeck, {
     }
     finally { if (!refreshing) schedulePoll(); }
   }
-  streamDeck.ui.onDidAppear(() => { uiSession++; uiRevisions.clear(); });
+  streamDeck.ui.onDidAppear(() => { uiSession++; uiRevisions.clear(); preview = undefined; });
   streamDeck.ui.onDidDisappear(() => {
     // SDK 3 updates ui.action before invoking this listener and retains it for
     // late unrelated or overlapping disappearance events. Only a true close
     // ends the current session; every appearance still starts a fresh one.
-    if (!streamDeck.ui.action) { uiSession++; uiRevisions.clear(); }
+    if (!streamDeck.ui.action) { uiSession++; uiRevisions.clear(); preview = undefined; }
   });
   streamDeck.actions.onWillAppear(event => {
     visible.set(event.action.id, { action: event.action, settings: event.payload.settings ?? {} });
@@ -386,7 +417,7 @@ export function createRuntime(streamDeck, {
     const entry = visible.get(event.action.id);
     if (!entry) return;
     const next = event.payload.settings ?? {};
-    const visual = settings => [settings.showText !== false, settings.scrollText !== false, settings.showRemaining !== false, settings.captionLayout === 'twoLines'];
+    const visual = settings => Object.values(artworkSettings(settings));
     const changed = (suffix(entry.action) === 'nowplaying' && visual(entry.settings).some((value, index) => value !== visual(next)[index])) ||
       (suffix(entry.action) === 'setvolume' && absoluteVolume(entry.settings) !== absoluteVolume(next)) ||
       (['seekback', 'seekforward'].includes(suffix(entry.action)) && seekSeconds(entry.settings) !== seekSeconds(next)) ||
@@ -395,7 +426,7 @@ export function createRuntime(streamDeck, {
     if (!changed) return;
     invalidate(entry);
     updateAnimationTimer();
-    render(entry).then(updateAnimationTimer).catch(report);
+    render(entry).then(async () => { updateAnimationTimer(); await renderPreview(); }).catch(report);
   });
   streamDeck.settings.onDidReceiveGlobalSettings(event => { configure(event.settings); refresh().catch(report); });
   streamDeck.actions.onKeyDown(event => {
@@ -436,6 +467,6 @@ export function createRuntime(streamDeck, {
       streamDeck.logger.info(t('started', { count: actions.length }));
       await refresh();
     },
-    stop() { started = false; requestArtwork(); resetPolling(); resetPlaybackFeedback(); timers.clearInterval(animationInterval); animationInterval = undefined; animationPeriod = undefined; }
+    stop() { started = false; preview = undefined; requestArtwork(); resetPolling(); resetPlaybackFeedback(); timers.clearInterval(animationInterval); animationInterval = undefined; animationPeriod = undefined; }
   };
 }

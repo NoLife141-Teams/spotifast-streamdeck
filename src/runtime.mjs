@@ -1,5 +1,5 @@
 import { ArtworkRenderer } from './artwork.mjs';
-import { UUID, actions, Spotifast, ArtworkCache, shortText, commandFor, remainingTime } from './core.mjs';
+import { UUID, actions, Spotifast, ArtworkCache, shortText, commandFor, remainingTime, absoluteVolume } from './core.mjs';
 import translations from '../streamdeck/ui/i18n.js';
 
 export function createRuntime(streamDeck, {
@@ -127,6 +127,7 @@ export function createRuntime(streamDeck, {
         entry.lastAnimationAt ??= clock;
       }
       if (['volumeup', 'volumedown', 'mute'].includes(id)) title = snapshot.volume === null ? '' : snapshot.volume + '%';
+      if (id === 'setvolume') title = absoluteVolume(settings) + '%';
       if (id === 'volume') feedback = { title: shortText(snapshot.title || t('volumeTitle'), 24), value: snapshot.volume === null ? '—' : snapshot.volume + '%', indicator: snapshot.volume ?? 0, icon: entry.artImage ?? 'imgs/volumeup.png' };
     }
     // Keep image strings out of JSON serialization on every animation frame.
@@ -280,8 +281,9 @@ export function createRuntime(streamDeck, {
         updateAnimationTimer();
         renderEntries(request.entries).catch(report);
       }
-      if (launch || suffix(event.action) === 'open') await client.open();
-      else await client.run(args);
+      const ordered = event.payload?.isInMultiAction === true;
+      if (launch || suffix(event.action) === 'open') await client.open({ ordered });
+      else await client.run(args, { ordered });
       if (!started) return;
       if (request && playbackRequest === request) { request.accepted = true; request.until = now() + 5000; }
       const entry = visible.get(event.action.id);
@@ -333,7 +335,8 @@ export function createRuntime(streamDeck, {
     if (!entry) return;
     const next = event.payload.settings ?? {};
     const visual = settings => [settings.showText !== false, settings.scrollText !== false, settings.showRemaining !== false, settings.captionLayout === 'twoLines'];
-    const changed = suffix(entry.action) === 'nowplaying' && visual(entry.settings).some((value, index) => value !== visual(next)[index]);
+    const changed = (suffix(entry.action) === 'nowplaying' && visual(entry.settings).some((value, index) => value !== visual(next)[index])) ||
+      (suffix(entry.action) === 'setvolume' && absoluteVolume(entry.settings) !== absoluteVolume(next));
     entry.settings = next;
     if (!changed) return;
     invalidate(entry);

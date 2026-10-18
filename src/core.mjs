@@ -16,6 +16,7 @@ var actions = [
   ["previous","Previous","previous"],
   ["nowplaying","Play / Pause with artwork","music"],
   ["volumeup","Volume +","volumeup"],
+  ["setvolume","Set volume","volumeup"],
   ["volumedown","Volume −","volumedown"],
   ["mute","Mute","mute"],
   ["shuffle","Shuffle","shuffle"],
@@ -37,6 +38,11 @@ function volumeStep(settings2 = {}) {
   const step = Number(settings2.step ?? 5);
   return Number.isFinite(step) ? Math.max(1, Math.min(25, Math.round(step))) : 5;
 }
+function absoluteVolume(settings = {}) {
+  const value = settings.volumePercent;
+  const number = value === undefined || String(value).trim() === '' ? 50 : Number(value);
+  return Number.isFinite(number) ? Math.max(0, Math.min(100, Math.round(number))) : 50;
+}
 function remainingTime(snapshot, elapsedMs = 0) {
   if (!snapshot || snapshot.state === 'stopped' || !Number.isFinite(snapshot.duration) || snapshot.duration <= 0 || !Number.isFinite(snapshot.position)) return undefined;
   const elapsed = snapshot.state === 'playing' && Number.isFinite(elapsedMs) ? Math.max(0, Math.min(5000, elapsedMs)) : 0;
@@ -57,6 +63,7 @@ function commandFor(id, settings2 = {}, ticks, desiredState) {
   }
   const simple = { playpause: "play-pause", nowplaying: "play-pause", next: "next", previous: "previous", mute: "mute", shuffle: "shuffle", repeat: "repeat", like: "like", open: "show" };
   if (simple[id]) return [simple[id]];
+  if (id === "setvolume") return ["volume", String(absoluteVolume(settings2))];
   if (id === "playlist") return ["play-uri", spotifyUri(settings2.uri)];
   if (id === "volumeup" || id === "volumedown") return [id === "volumeup" ? "volume-up" : "volume-down", String(volumeStep(settings2))];
   if (id === "volume") {
@@ -73,24 +80,24 @@ var CommandQueue = class {
     this.now = now;
     this.maxPending = maxPending;
   }
-  run(job, { key, priority = 0, maxWait = 5000, data, merge, renewOnMerge = false, dedupe = false } = {}) {
+  run(job, { key, priority = 0, maxWait = 5000, data, merge, renewOnMerge = false, dedupe = false, ordered = false } = {}) {
     const duplicate = dedupe && [this.active, ...this.pending].find(task => task?.key === key);
     if (duplicate) return duplicate.promise;
     const previous = this.pending.at(-1);
-    if (merge && previous?.key === key && this.now() <= previous.expires) {
+    if (merge && !ordered && !previous?.ordered && previous?.key === key && this.now() <= previous.expires) {
       merge(previous.data, data);
       if (renewOnMerge) previous.expires = this.now() + maxWait;
       return previous.promise;
     }
     if (this.pending.length >= this.maxPending) {
-      let lowest = 0;
-      for (let i = 1; i < this.pending.length; i++) if (this.pending[i].priority < this.pending[lowest].priority) lowest = i;
-      if (priority <= this.pending[lowest].priority) return Promise.reject(new LocalizedError('commandQueueBusy'));
+      let lowest = -1;
+      for (let i = 0; i < this.pending.length; i++) if (!this.pending[i].ordered && (lowest === -1 || this.pending[i].priority < this.pending[lowest].priority)) lowest = i;
+      if (lowest === -1 || priority <= this.pending[lowest].priority) return Promise.reject(new LocalizedError('commandQueueBusy'));
       this.pending.splice(lowest, 1)[0].reject(new LocalizedError('commandExpired'));
     }
     let resolve, reject;
     const promise = new Promise((ok, fail) => { resolve = ok; reject = fail; });
-    this.pending.push({ job, key, priority, data, promise, resolve, reject, expires: this.now() + maxWait });
+    this.pending.push({ job, key, priority, data, promise, resolve, reject, ordered, expires: this.now() + maxWait });
     if (!this.active && !this.scheduled) {
       this.scheduled = true;
       queueMicrotask(() => { this.scheduled = false; this.drain(); });
@@ -101,7 +108,12 @@ var CommandQueue = class {
     if (this.active) return;
     while (this.pending.length) {
       let index = 0;
-      for (let i = 1; i < this.pending.length; i++) if (this.pending[i].priority > this.pending[index].priority) index = i;
+      // A macro command is a FIFO barrier: neither it nor later work can
+      // overtake its predecessors. Interactive transport keeps its priority
+      // only within the prefix before the next barrier.
+      const barrier = this.pending.findIndex(task => task.ordered);
+      const limit = barrier === -1 ? this.pending.length : Math.max(1, barrier);
+      for (let i = 1; i < limit; i++) if (this.pending[i].priority > this.pending[index].priority) index = i;
       const task = this.pending.splice(index, 1)[0];
       this.active = task;
       try {
@@ -153,15 +165,15 @@ var Spotifast = class {
     if (configuration !== this.configuration) return this.executable();
     throw new LocalizedError("executableMissing");
   }
-  run(args) {
+  run(args, { ordered = false } = {}) {
     const volume = ['volume-up', 'volume-down'].includes(args[0]);
     const snapshot = args[0] === 'now-playing';
     const data = { args: [...args] };
-    // Mute reads/writes the volume state, so it shares the volume FIFO lane.
+    // Absolute volume and mute share the relative-volume FIFO lane.
     // Its distinct queue entry also prevents merging rotations across a mute.
     // Playback controls can still overtake this lane and status reads.
-    const options = { data, priority: snapshot ? -10 : volume || args[0] === 'mute' ? 0 : 20, maxWait: volume ? 2500 : 5000 };
-    if (volume) {
+    const options = { data, ordered, priority: snapshot ? -10 : volume || ['mute', 'volume'].includes(args[0]) ? 0 : 20, maxWait: volume && !ordered ? 2500 : 5000 };
+    if (volume && !ordered) {
       options.key = args[0];
       data.parts = [{ amount: Number(args[1]), expires: this.queue.now() + options.maxWait }];
       options.renewOnMerge = true;
@@ -188,7 +200,7 @@ var Spotifast = class {
   async snapshot() {
     return parseNowPlaying(await this.run(["now-playing", "--raw"]));
   }
-  open() {
+  open({ ordered = false } = {}) {
     return this.queue.run(async () => {
       const exe = await this.executable();
       // A bare launch starts the app, or surfaces its existing instance. Do not
@@ -203,7 +215,7 @@ var Spotifast = class {
           resolve();
         });
       });
-    }, { key: 'open', priority: 20, dedupe: true });
+    }, { key: 'open', priority: 20, dedupe: !ordered, ordered });
   }
 };
 function isArtworkUrl(value) {
@@ -303,4 +315,4 @@ function shortText(value, max = 13) {
 }
 
 
-export {LocalizedError, UUID, actions, parseNowPlaying, remainingTime, volumeStep, spotifyUri, commandFor, CommandQueue, Spotifast, isArtworkUrl, ArtworkCache, shortText};
+export {LocalizedError, UUID, actions, parseNowPlaying, remainingTime, volumeStep, absoluteVolume, spotifyUri, commandFor, CommandQueue, Spotifast, isArtworkUrl, ArtworkCache, shortText};

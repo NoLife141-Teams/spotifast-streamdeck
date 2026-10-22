@@ -24,7 +24,7 @@
   },
   "devDependencies": {
     "@elgato/cli": "1.10.2",
-    "@zip.js/zip.js": "2.23.0",
+    "@zip.js/zip.js": "2.24.0",
     "esbuild": "0.28.2"
   },
   "license": "MIT"

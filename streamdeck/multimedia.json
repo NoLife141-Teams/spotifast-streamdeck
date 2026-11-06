@@ -1,0 +1,17 @@
+{
+  "$schema": "https://schemas.elgato.com/streamdeck/plugins/layout.json",
+  "id": "rocks.spotifast.streamdeck.multimedia",
+  "controller": "Encoder",
+  "items": [
+    { "type": "pixmap", "key": "artwork", "rect": [6, 7, 40, 40] },
+    { "type": "text", "key": "track", "rect": [54, 7, 140, 18], "font": { "size": 16, "weight": 600 }, "alignment": "left", "text-overflow": "ellipsis" },
+    { "type": "text", "key": "artist", "rect": [54, 25, 140, 16], "font": { "size": 13, "weight": 400 }, "alignment": "left", "text-overflow": "ellipsis" },
+    { "type": "text", "key": "elapsed", "rect": [5, 59, 30, 17], "font": { "size": 10, "weight": 400 }, "alignment": "left" },
+    { "type": "pixmap", "key": "shuffle", "rect": [37, 58, 19, 19] },
+    { "type": "pixmap", "key": "previous", "rect": [66, 58, 19, 19] },
+    { "type": "pixmap", "key": "playback", "rect": [97, 56, 22, 22] },
+    { "type": "pixmap", "key": "next", "rect": [128, 58, 19, 19] },
+    { "type": "text", "key": "duration", "rect": [165, 59, 30, 17], "font": { "size": 10, "weight": 400 }, "alignment": "right" },
+    { "type": "bar", "key": "progress", "rect": [6, 87, 188, 5], "range": { "min": 0, "max": 100 }, "value": 0, "subtype": 0, "border_w": 0, "bar_bg_c": "#3b3b3b", "bar_fill_c": "#1ed760" }
+  ]
+}

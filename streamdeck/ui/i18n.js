@@ -27,6 +27,7 @@
       unsupportedMultiAction: 'This action cannot set an explicit state in a Multi Action.', connectionLost: 'Connection to Stream Deck was lost. Reopen these settings.',
       open: 'Open Spotifast', check: 'Check connection', playlistLabel: 'Playlist, album, track, artist or show link',
       playlistHint: 'Copy a Spotify link or use a spotify:playlist:… URI.', volumeLabel: 'Volume step (%)',
+      multimediaHint: 'Turn clockwise for the next track or counter-clockwise for the previous track. Press to play or pause. Tap the touch-strip controls for shuffle, previous, play/pause or next.',
       showText: 'Show the title and artist on the artwork', executableLabel: 'Spotifast location (optional)',
       captionLayout: 'Text layout', compactCaption: 'One line: title • artist', twoLineCaption: 'Two lines: title and artist',
       captionHint: 'One line leaves more of the artwork visible. Long text scrolls together.',
@@ -37,6 +38,9 @@
       artworkHelp: 'Press to play or pause. A brief ▶ or ⏸ confirms the change, then the artwork returns. The track updates automatically.',
       favoriteHelp: 'Press to add or remove the current track from your favorites. A filled heart means it is saved; an outlined heart means it is not.',
       dialHelp: 'Turn to adjust Spotifast volume. Press to mute. Tap the screen to play or pause.',
+      multimediaHelp: 'The Multimedia action is separate from Volume. Turn clockwise for next or counter-clockwise for previous; press to play or pause. Tap the touch-strip icons for shuffle, previous, play/pause or next.',
+      multimediaOfflineHint: 'Open Spotifast to connect', multimediaTooltip: 'Show track information and control playback.',
+      multimediaRotate: 'Previous / next track', multimediaPush: 'Play / Pause', multimediaTouch: 'Shuffle / previous / play / next',
       connected: 'Spotifast is open. Choose a track in the app.', signIn: 'Open Spotifast and sign in to Spotify.',
       nowPlaying: 'Now playing: {title}', offline: 'Offline', openButton: 'Open\nSpotifast',
       noTrack: 'No\ntrack', volumeTitle: 'Spotifast volume', unavailable: 'Spotifast is unavailable. Open the app.',
@@ -62,7 +66,7 @@
       action_seekback: 'Seek backward', action_seekforward: 'Seek forward', action_restart: 'Restart track',
       absoluteVolumeLabel: 'Set volume (%)', absoluteVolumeHint: 'Sets exactly this volume, including in Multi Actions. 0 is silent.',
       action_setvolume: 'Set volume', action_mute: 'Mute', action_shuffle: 'Shuffle', action_repeat: 'Repeat', action_like: 'Favorite',
-      action_playlist: 'Play Spotify link', action_open: 'Open Spotifast', action_volume: 'Volume (dial)',
+      action_playlist: 'Play Spotify link', action_open: 'Open Spotifast', action_volume: 'Volume (dial)', action_multimedia: 'Multimedia',
       dialTooltip: 'Turn: volume. Press: mute. Tap: play/pause.', rotate: 'Adjust volume', push: 'Mute', touch: 'Play / Pause'
     },
     fr: {
@@ -88,6 +92,7 @@
       unsupportedMultiAction: 'Cette action ne peut pas définir un état explicite dans une multi-action.', connectionLost: 'La connexion à Stream Deck est perdue. Rouvre ces réglages.',
       open: 'Ouvrir Spotifast', check: 'Vérifier la connexion', playlistLabel: 'Lien de playlist, album, morceau, artiste ou émission',
       playlistHint: 'Copie un lien Spotify ou utilise une URI spotify:playlist:…', volumeLabel: 'Variation du volume (%)',
+      multimediaHint: 'Tourne dans le sens horaire pour le morceau suivant ou antihoraire pour le précédent. Appuie pour lire ou mettre en pause. Touche les commandes à l’écran pour lecture aléatoire, précédent, lecture/pause ou suivant.',
       showText: 'Afficher le titre et l’artiste sur la pochette', executableLabel: 'Emplacement de Spotifast (facultatif)',
       captionLayout: 'Disposition du texte', compactCaption: 'Une ligne : titre • artiste', twoLineCaption: 'Deux lignes : titre et artiste',
       captionHint: 'Une ligne laisse davantage de pochette visible. Les textes longs défilent ensemble.',
@@ -98,6 +103,9 @@
       artworkHelp: 'Appuie pour lire ou mettre en pause. Un symbole ▶ ou ⏸ confirme brièvement le changement, puis la pochette réapparaît. Le morceau se met à jour automatiquement.',
       favoriteHelp: 'Appuie pour ajouter ou retirer le morceau des favoris. Un cœur plein indique qu’il est ajouté; un cœur vide indique qu’il ne l’est pas.',
       dialHelp: 'Tourne pour régler le volume de Spotifast. Appuie pour couper le son. Touche l’écran pour lire ou mettre en pause.',
+      multimediaHelp: 'L’action Multimedia est distincte du volume. Tourne dans le sens horaire pour le morceau suivant ou antihoraire pour le précédent; appuie pour lire ou mettre en pause. Touche les icônes à l’écran pour lecture aléatoire, précédent, lecture/pause ou suivant.',
+      multimediaOfflineHint: 'Ouvre Spotifast pour te connecter', multimediaTooltip: 'Afficher les informations du morceau et contrôler la lecture.',
+      multimediaRotate: 'Morceau précédent / suivant', multimediaPush: 'Lecture / Pause', multimediaTouch: 'Lecture aléatoire / précédent / lecture / suivant',
       connected: 'Spotifast est ouvert. Choisis un morceau dans l’application.', signIn: 'Ouvre Spotifast et connecte-toi à Spotify.',
       nowPlaying: 'Lecture en cours : {title}', offline: 'Hors ligne', openButton: 'Ouvrir\nSpotifast',
       noTrack: 'Aucun\nmorceau', volumeTitle: 'Volume Spotifast', unavailable: 'Spotifast indisponible. Ouvre l’application.',
@@ -123,7 +131,7 @@
       action_seekback: 'Reculer', action_seekforward: 'Avancer', action_restart: 'Recommencer le morceau',
       absoluteVolumeLabel: 'Volume cible (%)', absoluteVolumeHint: 'Définit ce volume exact, y compris dans les multi-actions. 0 coupe le son.',
       action_setvolume: 'Définir le volume', action_mute: 'Sourdine', action_shuffle: 'Lecture aléatoire', action_repeat: 'Répétition', action_like: 'Favori',
-      action_playlist: 'Lire un lien Spotify', action_open: 'Ouvrir Spotifast', action_volume: 'Volume (molette)',
+      action_playlist: 'Lire un lien Spotify', action_open: 'Ouvrir Spotifast', action_volume: 'Volume (molette)', action_multimedia: 'Multimedia',
       dialTooltip: 'Tourner : volume. Appuyer : sourdine. Toucher : lecture/pause.', rotate: 'Régler le volume', push: 'Sourdine', touch: 'Lecture / Pause'
     }
   };

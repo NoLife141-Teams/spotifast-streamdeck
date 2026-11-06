@@ -303,6 +303,31 @@
       }
     },
     {
+      "UUID": "rocks.spotifast.streamdeck.multimedia",
+      "Name": "Multimedia",
+      "Icon": "imgs/music",
+      "Tooltip": "Control track playback and browse the current track.",
+      "PropertyInspectorPath": "ui/settings.html",
+      "Controllers": [
+        "Encoder"
+      ],
+      "States": [
+        {
+          "Image": "imgs/music",
+          "TitleAlignment": "bottom",
+          "FontSize": 11
+        }
+      ],
+      "Encoder": {
+        "layout": "multimedia.json",
+        "TriggerDescription": {
+          "Rotate": "Previous / next track",
+          "Push": "Play / Pause",
+          "Touch": "Shuffle / previous / play / next"
+        }
+      }
+    },
+    {
       "UUID": "rocks.spotifast.streamdeck.seekback",
       "Name": "Seek backward",
       "Icon": "imgs/previous",

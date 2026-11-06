@@ -76,6 +76,19 @@ test('R13: volume steps are rounded, bounded and redisplayed exactly as executed
   }
 });
 
+test('Volume and Multimedia are separate encoder actions with separate settings', () => {
+  const volume = inspector({ action: 'volume' });
+  assert.equal(volume.element('volume').hidden, false);
+  assert.equal(volume.element('multimedia').hidden, true);
+  assert.match(volume.element('help').textContent, /adjust Spotifast volume/);
+  const multimedia = inspector({ action: 'multimedia' });
+  assert.equal(multimedia.element('volume').hidden, true);
+  assert.equal(multimedia.element('multimedia').hidden, false);
+  assert.match(multimedia.element('help').textContent, /clockwise for next/);
+  assert.equal(multimedia.sent('setSettings').length, 0);
+  assert.doesNotMatch(source, /rotationMode/);
+});
+
 test('both languages translate messages immediately and preserve unknown global fields', () => {
   const { element, receive, sent, document } = inspector(); element('language').value = 'fr'; element('language').onchange(); receive('didReceiveGlobalSettings', { settings: sent('setGlobalSettings').at(-1).payload });
   receive('sendToPropertyInspector', { type: 'status', messageKey: 'connected', online: true }); assert.equal(document.documentElement.lang, 'fr'); assert.match(element('status').textContent, /Choisis un morceau/);

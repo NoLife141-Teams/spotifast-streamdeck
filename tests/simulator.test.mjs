@@ -16,11 +16,13 @@ test('visual simulator routes dials and touch through the real SDK and resets is
     do { const state = await read(); if (predicate(state)) return state; await delay(20); } while (Date.now() < deadline);
     throw new Error('Simulator did not reach expected state');
   }
-  await waitFor(state => state.dials.every(entry => entry.feedback.track || entry.feedback.title));
+  // Metadata is rendered before the separate artwork request completes.
+  // Wait for the actual cover before inspecting the initial feedback snapshot.
+  const initial = await waitFor(state => state.dials.every(entry => entry.feedback.track || entry.feedback.title) &&
+    /^data:image\/png;base64,/.test(state.dials[0].feedback.artwork ?? ''));
   assert.equal((await fetch(simulator.url)).status, 200);
   assert.equal((await fetch(simulator.url + '/imgs/music.png')).status, 200);
   assert.equal((await fetch(simulator.url + '/package.json')).status, 404);
-  const initial = await read();
   assert.equal(initial.keys.length, 8);
   assert.equal(initial.dials.length, 4);
   assert.equal(initial.dials[0].feedback.track, 'Été à Montréal');

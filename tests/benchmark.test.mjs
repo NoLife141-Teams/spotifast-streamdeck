@@ -45,7 +45,9 @@ test('Windows process sampler reports the peak of its memory samples', { skip: p
   const directory = await mkdtemp(path.join(tmpdir(), 'spotifast-process-baseline-'));
   try {
     const output = path.join(directory, 'baseline.json');
-    await promisify(execFile)('powershell.exe', ['-NoProfile', '-NonInteractive', '-File', fileURLToPath(new URL('../scripts/measure-process.ps1', import.meta.url)), '-ProcessId', String(process.pid), '-Seconds', '2', '-Output', output], { windowsHide: true, timeout: 15000 });
+    // Cold PowerShell startup on Windows runners can exceed 15 seconds.
+    // The script still measures a two-second window; bound startup separately.
+    await promisify(execFile)('powershell.exe', ['-NoProfile', '-NonInteractive', '-File', fileURLToPath(new URL('../scripts/measure-process.ps1', import.meta.url)), '-ProcessId', String(process.pid), '-Seconds', '2', '-Output', output], { windowsHide: true, timeout: 60000 });
     const report = JSON.parse((await readFile(output, 'utf8')).replace(/^\uFEFF/, ''));
     assert.ok(report.samples.length > 0);
     assert.ok(report.peakWorkingSetBytes > 0);

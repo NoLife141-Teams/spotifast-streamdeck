@@ -18,14 +18,19 @@
     "release:prepare": "node scripts/prepare-release.mjs"
   },
   "dependencies": {
-    "@elgato/streamdeck": "3.0.2",
+    "@elgato/streamdeck": "3.0.3",
     "opentype.js": "2.0.0",
     "sharp": "0.35.5"
   },
   "devDependencies": {
-    "@elgato/cli": "1.10.2",
+    "@elgato/cli": "1.10.3",
     "@zip.js/zip.js": "2.24.0",
     "esbuild": "0.28.2"
   },
-  "license": "MIT"
+  "license": "MIT",
+  "overrides": {
+    "@elgato/utils": {
+      "zod": "4.6.7"
+    }
+  }
 }

@@ -28,7 +28,8 @@ var actions = [
   ["playlist","Play Spotify link","playlist"],
   ["open","Open Spotifast","music"],
   ["device","Playback device","music"],
-  ["volume","Volume (dial)","volumeup"]
+  ["volume","Volume (dial)","volumeup"],
+  ["multimedia","Multimedia","music"]
 ];
 function parseNowPlaying(raw) {
   const fields = String(raw).replace(/[\r\n]+$/, "").split("	");

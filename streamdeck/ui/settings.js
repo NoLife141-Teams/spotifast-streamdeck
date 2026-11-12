@@ -93,7 +93,7 @@ function renderLanguage() {
   document.querySelectorAll('[data-i18n-placeholder]').forEach(node => { node.placeholder = translate(node.dataset.i18nPlaceholder); });
   element('language').value = ['en', 'fr'].includes(globalSettings.language) ? globalSettings.language : 'auto';
   const id = actionId?.split('.').pop();
-  element('help').textContent = translate(id === 'volume' ? 'dialHelp' : id === 'nowplaying' ? 'artworkHelp' : id === 'like' ? 'favoriteHelp' : 'help');
+  element('help').textContent = translate(id === 'volume' ? 'dialHelp' : id === 'multimedia' ? 'multimediaHelp' : id === 'nowplaying' ? 'artworkHelp' : id === 'like' ? 'favoriteHelp' : 'help');
   renderStatus();
   renderDevices();
   renderUriValidation();
@@ -147,6 +147,7 @@ window.connectElgatoStreamDeckSocket = (port, propertyInspectorUUID, registerEve
   const id = actionId.split('.').pop();
   element('playlist').hidden = id !== 'playlist';
   element('volume').hidden = !['volumeup', 'volumedown', 'volume'].includes(id);
+  element('multimedia').hidden = id !== 'multimedia';
   element('text').hidden = id !== 'nowplaying';
   element('absoluteVolume').hidden = id !== 'setvolume';
   element('seek').hidden = !['seekback', 'seekforward'].includes(id);

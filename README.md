@@ -30,6 +30,10 @@ Les lectures de statut sont espacées de 1,5 seconde après la fin de la lecture
 
 ### État de la version
 
+La version **0.3.2 bêta** ajoute l’action d’encodeur **Multimedia**, distincte de **Volume (dial)** : les rotations changent de morceau, l’appui lance ou met en pause et l’écran affiche la pochette, le titre, l’artiste, la progression et les commandes tactiles. La rotation de Volume conserve uniquement le réglage du volume. Les essais sur Stream Deck + restent à effectuer. Voir les [notes de version](releases/v0.3.2.md).
+
+La version **0.3.1 bêta** permet de configurer la molette du Stream Deck + pour régler le volume (par défaut) ou changer de morceau : sens horaire = suivant, sens antihoraire = précédent. Les anciens réglages gardent le volume; appui = sourdine et toucher = lecture/pause. Le test sur molette physique reste à effectuer. Voir les [notes de version](releases/v0.3.1.md).
+
 La version **0.3.0 bêta** regroupe les huit lots des PR #18 à #25 : volume absolu, ordre des multi-actions, avance/retour et redémarrage, diagnostics locaux, noms de raccourcis, aperçu des réglages, temps écoulé/progression facultatifs et sélection explicite de l’appareil de lecture. Les identifiants, réglages et affichages par défaut existants sont conservés. Les **225 tests automatisés** et la vérification de l’installateur couvrent Windows avec Node 20 et 22. Les essais physiques de cette version, notamment Stream Deck +, restent **non réalisés**. Voir les [notes de version bilingues](releases/v0.3.0.md) et le [guide des nouvelles commandes](docs/playback-commands.md).
 
 La version **0.2.7 bêta** conserve l’ordre des commandes de sourdine et de volume, réduit les calculs de rendu des longues légendes et évite ceux des légendes masquées. Les réglages restent réactifs lors des changements rapides de touche. Les correctifs passent 130 tests automatisés sur Windows avec Node 20 et 22. Aucun nouveau test sur matériel physique n’a été réalisé pour ces correctifs; les molettes Stream Deck + restent à tester. Les réglages et les identifiants des actions sont conservés.
@@ -79,6 +83,10 @@ Multi Actions can explicitly set Play/Pause with either the icon key or the artw
 Status reads wait 1.5 seconds after the previous read completes, without catch-up polling when Spotifast slows down. After failures, retries wait 3, 6, 15 and then 30 seconds. A command, configuration change or wake-up requests a fresh check without waiting for that delay; successful commands refresh status after 250 ms. Status CLI processes have a one-second execution timeout; writes retain five seconds and remain serialized. No automatic status reads run without a visible Spotifast action.
 
 ### Version status
+
+Version **0.3.2 beta** adds a **Multimedia** encoder action separate from **Volume (dial)**: rotation changes tracks, pressing toggles playback, and the touchscreen shows artwork, title, artist, progress and touch controls. Volume (dial) is now dedicated to volume adjustment. Physical Stream Deck + testing remains necessary. See the [release notes](releases/v0.3.2.md).
+
+Version **0.3.1 beta** lets you configure the Stream Deck + dial to adjust volume (the default) or change tracks: clockwise = next, counter-clockwise = previous. Existing settings keep volume; press still mutes and touch still toggles playback. Physical dial testing remains necessary. See the [release notes](releases/v0.3.1.md).
 
 Version **0.3.0 beta** combines all eight lots from PRs #18–#25: absolute volume, ordered Multi Actions, seek/restart, local diagnostics, shortcut names, settings preview, optional elapsed/progress overlays and explicit playback-device selection. Existing identifiers, settings and default appearance are preserved. **225 automated tests** and exact installer verification cover Windows Node 20 and 22. Physical testing of this version, including Stream Deck +, remains **not performed**. See the [bilingual release notes](releases/v0.3.0.md) and [additional playback commands](docs/playback-commands.md).
 

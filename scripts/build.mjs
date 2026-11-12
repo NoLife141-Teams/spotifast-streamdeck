@@ -17,6 +17,7 @@ await rm(output, { recursive: true, force: true });
 await mkdir(path.join(output, 'bin'), { recursive: true });
 await cp(path.join(root, 'streamdeck/ui'), path.join(output, 'ui'), { recursive: true });
 await cp(path.join(root, 'streamdeck/imgs'), path.join(output, 'imgs'), { recursive: true });
+await cp(path.join(root, 'streamdeck/multimedia.json'), path.join(output, 'multimedia.json'));
 await cp(path.join(root, 'LICENSE'), path.join(output, 'LICENSE'));
 const manifest = JSON.parse(await readFile(path.join(root, 'streamdeck/manifest.json'), 'utf8'));
 manifest.Version = JSON.parse(await readFile(path.join(root, 'package.json'), 'utf8')).version + '.0';
@@ -25,8 +26,10 @@ manifest.Description = translations.messages.en.description;
 for (const action of manifest.Actions) {
   const id = action.UUID.split('.').pop();
   action.Name = translations.messages.en['action_' + id];
-  action.Tooltip = id === 'volume' ? translations.messages.en.dialTooltip : 'Spotifast: ' + action.Name;
-  if (action.Encoder) action.Encoder.TriggerDescription = { Rotate: translations.messages.en.rotate, Push: translations.messages.en.push, Touch: translations.messages.en.touch };
+  action.Tooltip = id === 'volume' ? translations.messages.en.dialTooltip : id === 'multimedia' ? translations.messages.en.multimediaTooltip : 'Spotifast: ' + action.Name;
+  if (action.Encoder) action.Encoder.TriggerDescription = id === 'multimedia'
+    ? { Rotate: translations.messages.en.multimediaRotate, Push: translations.messages.en.multimediaPush, Touch: translations.messages.en.multimediaTouch }
+    : { Rotate: translations.messages.en.rotate, Push: translations.messages.en.push, Touch: translations.messages.en.touch };
 }
 await writeFile(path.join(output, 'manifest.json'), JSON.stringify(manifest, null, 2) + '\n');
 for (const language of ['en', 'fr']) {
@@ -34,8 +37,10 @@ for (const language of ['en', 'fr']) {
   const locale = { Name: 'Spotifast', Description: t('description'), Localization: translations.messages[language] };
   for (const action of manifest.Actions) {
     const id = action.UUID.split('.').pop();
-    locale[action.UUID] = { Name: t('action_' + id), Tooltip: id === 'volume' ? t('dialTooltip') : 'Spotifast: ' + t('action_' + id) };
-    if (action.Encoder) locale[action.UUID].Encoder = { TriggerDescription: { Rotate: t('rotate'), Push: t('push'), Touch: t('touch') } };
+    locale[action.UUID] = { Name: t('action_' + id), Tooltip: id === 'volume' ? t('dialTooltip') : id === 'multimedia' ? t('multimediaTooltip') : 'Spotifast: ' + t('action_' + id) };
+    if (action.Encoder) locale[action.UUID].Encoder = { TriggerDescription: id === 'multimedia'
+      ? { Rotate: t('multimediaRotate'), Push: t('multimediaPush'), Touch: t('multimediaTouch') }
+      : { Rotate: t('rotate'), Push: t('push'), Touch: t('touch') } };
   }
   await writeFile(path.join(output, language + '.json'), JSON.stringify(locale, null, 2) + '\n');
 }

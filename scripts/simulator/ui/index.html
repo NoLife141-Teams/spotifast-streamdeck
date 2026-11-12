@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="fr">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Stream Deck + · Studio de test</title><link rel="stylesheet" href="/style.css"><script type="module" src="/app.js"></script></head>
+<body>
+  <header class="topbar"><a class="wordmark" href="/" aria-label="Accueil du simulateur"><span class="brandmark">s<span>+</span></span> spotifast<span class="divider"></span><span class="toplabel">STUDIO DE TEST</span></a><span class="local"><i></i> LOCAL · LECTEUR FICTIF</span></header>
+  <main>
+    <div class="heading"><div><p class="eyebrow">LE MATÉRIEL EN MOINS. LES GESTES EN PLUS.</p><h1>Stream Deck <span>+</span></h1><p class="intro">Tourne, appuie, touche. Observe ce que le plugin fait vraiment.</p></div><button id="reset" class="secondary">↺ &nbsp; Réinitialiser</button></div>
+    <div id="error" role="alert" hidden></div>
+    <div class="workspace">
+      <section class="stage" aria-label="Stream Deck + simulé">
+        <div class="stage-meta"><span><i id="sdk-led"></i><span id="connection">Connexion au SDK…</span></span><span>4 MOLETTES / 8 TOUCHES</span></div>
+        <div class="hardware" id="hardware">
+          <div class="device-top"><span class="device-logo">▹ STREAM DECK <b>+</b></span><span class="device-dot"></span></div>
+          <div id="keys" class="keys"></div>
+          <div class="strip-wrap"><div id="screens" class="screens"></div><div class="screen-gloss"></div></div>
+          <div id="dials" class="dials"></div>
+          <div class="device-footer"><span>SPOTIFAST</span><span class="usb">USB VIRTUEL <i></i></span></div>
+        </div>
+        <div class="gesture-help"><span><b>↕</b> Glisser ou faire défiler une molette</span><span><b>↓</b> Cliquer pour appuyer</span><span><b>⊹</b> Toucher l’écran</span></div>
+        <div class="keyboard-help"><span>CLAVIER</span><kbd>1</kbd>–<kbd>4</kbd> choisir <kbd>←</kbd><kbd>→</kbd> tourner <kbd>Espace</kbd> appuyer</div>
+      </section>
+      <aside class="inspector">
+        <section class="panel controls-panel"><div class="panel-heading"><p class="eyebrow">MOLETTE SÉLECTIONNÉE</p><span id="dial-number" class="number">01</span></div><h2 id="dial-name">Multimedia</h2><p id="dial-description" class="muted">Navigation et lecture du morceau.</p>
+          <label for="action">Action du plugin</label><select id="action"><option value="multimedia">Multimedia</option><option value="volume">Volume</option></select>
+          <div id="step-field" hidden><label for="step">Variation par cran</label><select id="step"><option value="1">1 %</option><option value="5" selected>5 %</option><option value="10">10 %</option><option value="25">25 %</option></select></div>
+          <label for="ticks">Crans par test <output id="ticks-value">1</output></label><input id="ticks" type="range" min="1" max="8" value="1">
+          <div class="test-controls"><button id="rotate-left" aria-label="Tourner à gauche">↶</button><button id="push">Appuyer</button><button id="rotate-right" aria-label="Tourner à droite">↷</button></div>
+          <div class="scenario"><label for="scenario">Scénario du lecteur</label><select id="scenario"><option value="normal">Lecture normale</option><option value="long">Titre et artiste longs</option><option value="unknown">Durée inconnue</option><option value="stopped">Aucun morceau</option><option value="offline">Spotifast hors ligne</option></select></div>
+        </section>
+        <section class="panel player-panel"><p class="eyebrow">LECTEUR DE DÉMONSTRATION</p><div class="player-line"><span id="play-state" class="state-dot"></span><strong id="player-title">Chargement…</strong></div><p id="player-artist" class="muted"></p><div class="volume-row"><span>Volume</span><strong id="volume-value">50 %</strong></div><div class="meter"><div id="volume-meter"></div></div><div class="player-chips"><span id="shuffle-state">Aléatoire · non</span><span id="repeat-state">Répéter · non</span></div></section>
+      </aside>
+    </div>
+    <section class="journal panel"><div class="journal-heading"><div><p class="eyebrow">SOUS LE CAPOT</p><h2>Journal des interactions</h2></div><div class="journal-actions"><span id="event-count">0 événement</span><button id="clear-log" class="text-button">Effacer la vue</button></div></div><div id="journal" class="journal-rows" role="log" aria-label="Journal des interactions"><p class="empty">À toi de jouer. Les événements et commandes apparaîtront ici.</p></div></section>
+    <footer><span><i></i> Vrai SDK Elgato · code du plugin · lecteur fictif</span><span>Rendu approché de l’écran. Aucun appareil ni compte Spotify nécessaire.</span></footer>
+  </main>
+</body></html>

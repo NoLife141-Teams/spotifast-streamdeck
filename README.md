@@ -28,6 +28,13 @@ Les multi-actions peuvent définir explicitement Lecture/Pause avec la touche ic
 
 Les lectures de statut sont espacées de 1,5 seconde après la fin de la lecture précédente, sans rattrapage si Spotifast ralentit. Après un échec, le plugin attend 3, 6, 15 puis 30 secondes entre les tentatives. Une commande, un changement de configuration ou un réveil relance la vérification sans attendre ce délai; après une commande réussie, le statut est vérifié après 250 ms. Les lectures CLI ont un délai d’exécution d’une seconde, les commandes d’écriture gardent cinq secondes et restent sérialisées. Aucune lecture automatique n’est lancée sans touche Spotifast visible.
 
+### Tester le Stream Deck + sans matériel
+
+`npm run simulator` ouvre un serveur local sur **http://127.0.0.1:4319** avec
+quatre molettes, un écran tactile et huit touches. Il utilise le vrai SDK Elgato
+et le code du plugin avec un lecteur fictif. Les gestes, les scénarios et les
+limites du rendu sont détaillés dans le [guide du simulateur](docs/streamdeck-plus-simulator.md).
+
 ### État de la version
 
 La version **0.3.2 bêta** ajoute l’action d’encodeur **Multimedia**, distincte de **Volume (dial)** : les rotations changent de morceau, l’appui lance ou met en pause et l’écran affiche la pochette, le titre, l’artiste, la progression et les commandes tactiles. La rotation de Volume conserve uniquement le réglage du volume. Les essais sur Stream Deck + restent à effectuer. Voir les [notes de version](releases/v0.3.2.md).
@@ -81,6 +88,13 @@ Automatic detection supports the standard Windows installation. You can set a cu
 Multi Actions can explicitly set Play/Pause with either the icon key or the artwork key, Shuffle on/off, and Repeat off/context. Repeating a Play or Pause Multi Action keeps the requested state. On a regular key, both Play/Pause actions still toggle playback. Favorite remains available as a key but is excluded from Multi Actions. Pending commands are bounded and nearby rotations in the same direction are combined.
 
 Status reads wait 1.5 seconds after the previous read completes, without catch-up polling when Spotifast slows down. After failures, retries wait 3, 6, 15 and then 30 seconds. A command, configuration change or wake-up requests a fresh check without waiting for that delay; successful commands refresh status after 250 ms. Status CLI processes have a one-second execution timeout; writes retain five seconds and remain serialized. No automatic status reads run without a visible Spotifast action.
+
+### Test Stream Deck + without hardware
+
+`npm run simulator` starts a local browser simulator at **http://127.0.0.1:4319**
+with four dials, a touch strip and eight keys. It runs the real Elgato SDK and
+plugin runtime against a fictional player. See the [simulator guide](docs/streamdeck-plus-simulator.md)
+for gestures, scenarios and rendering limitations.
 
 ### Version status
 

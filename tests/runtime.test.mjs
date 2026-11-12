@@ -12,6 +12,10 @@ function key(id = 'nowplaying', instance = id) {
   return { id: instance, manifestId: UUID + '.' + id, isKey: () => true, states: [], images: [], titles: [], alerts: 0,
     async setState(value) { this.states.push(value); }, async setImage(value) { this.images.push(value); }, async setTitle(value) { this.titles.push(value); }, async showAlert() { this.alerts++; } };
 }
+function dial(id = 'multimedia', instance = id) {
+  return { id: instance, manifestId: UUID + '.' + id, isKey: () => false, feedback: [], alerts: 0,
+    async setFeedback(value) { this.feedback.push(value); }, async showAlert() { this.alerts++; } };
+}
 async function runtime(options = {}) {
   const callbacks = {}, messages = [], warnings = [], errors = [], timeouts = new Map(), intervals = new Map();
   const client = { customPath: '', data: { state: 'paused', title: '', artists: '', volume: 50, repeat: 'off', shuffle: false, saved: 'no', artUrl: '' }, calls: [], reads: 0,
@@ -771,6 +775,55 @@ test('offline dial rotation retains volume commands without launching', async ()
   callbacks.onDialRotate({ action, payload: { settings: { step: 5 }, ticks: 2 } }); await flush();
   assert.deepEqual(client.calls, [['volume-up', '10']]);
   assert.equal(client.opened, undefined);
+  api.stop();
+});
+
+test('Multimedia dial rotates clockwise to next and counter-clockwise to previous, preserving every tick', async () => {
+  const { api, client, callbacks } = await runtime();
+  const action = dial('multimedia');
+  callbacks.onDialRotate({ action, payload: { settings: {}, ticks: 2 } });
+  callbacks.onDialRotate({ action, payload: { settings: {}, ticks: -2 } });
+  await flush();
+  assert.deepEqual(client.calls, [['next'], ['next'], ['previous'], ['previous']]);
+  api.stop();
+});
+
+test('Multimedia dial push and touch-strip icons control their matching playback actions', async () => {
+  const { api, client, callbacks } = await runtime();
+  const action = dial('multimedia');
+  callbacks.onDialDown({ action, payload: {} });
+  for (const [tapPos, command] of [
+    [[46, 67], ['shuffle']], [[75, 67], ['previous']], [[108, 67], ['play-pause']], [[137, 67], ['next']]
+  ]) callbacks.onTouchTap({ action, payload: { tapPos } });
+  await flush();
+  assert.deepEqual(client.calls, [['play-pause'], ...[
+    ['shuffle'], ['previous'], ['play-pause'], ['next']
+  ]]);
+  api.stop();
+});
+
+test('Multimedia encoder renders the current track, timing, controls and progress feedback', async () => {
+  const { api, client } = await runtime();
+  client.data = { ...client.data, state: 'playing', title: 'Waves', artists: 'Dean Lewis', position: 65_000, duration: 240_000, shuffle: true, artUrl: '' };
+  const action = dial('multimedia');
+  api.visible.set(action.id, { action, settings: {} });
+  await api.refresh();
+  const feedback = action.feedback.at(-1);
+  assert.equal(feedback.track, 'Waves');
+  assert.equal(feedback.artist, 'Dean Lewis');
+  assert.equal(feedback.elapsed, '1:05');
+  assert.equal(feedback.duration, '4:00');
+  assert.equal(feedback.progress, 27);
+  assert.equal(feedback.shuffle, 'imgs/shuffle-active.png');
+  assert.equal(feedback.playback, 'imgs/pause-active.png');
+  assert.equal(action.feedback.at(-1).artwork, 'imgs/music.png');
+  api.stop();
+});
+
+test('dial rotation keeps volume as the default for existing settings', async () => {
+  const { api, client, callbacks } = await runtime();
+  callbacks.onDialRotate({ action: key('volume'), payload: { settings: {}, ticks: -2 } }); await flush();
+  assert.deepEqual(client.calls, [['volume-down', '10']]);
   api.stop();
 });
 

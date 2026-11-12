@@ -92,6 +92,26 @@ export function createRuntime(streamDeck, {
   async function sendStatus(token, payload) {
     if (currentInspector(token)) await streamDeck.ui.sendToPropertyInspector({ ...payload, ...(token.requestId === undefined ? {} : { requestId: token.requestId }) });
   }
+  function formatTrackTime(value) {
+    if (!Number.isFinite(value) || value < 0) return '--:--';
+    const seconds = Math.floor(value / 1000), minutes = Math.floor(seconds / 60), rest = String(seconds % 60).padStart(2, '0');
+    return minutes >= 60 ? Math.floor(minutes / 60) + ':' + String(minutes % 60).padStart(2, '0') + ':' + rest : minutes + ':' + rest;
+  }
+  function multimediaFeedback(entry, snapshot, connected) {
+    const elapsed = Math.max(0, now() - sampledAt), display = connected ? playbackDisplay(snapshot, elapsed) : {};
+    return {
+      artwork: entry.artImage ?? 'imgs/music.png',
+      track: connected ? shortText(snapshot.title || t('noTrack').replace(/\n/g, ' '), 80) : t('offline'),
+      artist: connected ? shortText(snapshot.artists || '', 80) : t('multimediaOfflineHint'),
+      elapsed: formatTrackTime(display.positionMs),
+      duration: formatTrackTime(snapshot?.duration),
+      progress: Number.isFinite(display.progress) ? Math.round(display.progress * 100) : 0,
+      shuffle: snapshot?.shuffle ? 'imgs/shuffle-active.png' : 'imgs/shuffle.png',
+      previous: 'imgs/previous.png',
+      playback: snapshot?.state === 'playing' ? 'imgs/pause-active.png' : 'imgs/play.png',
+      next: 'imgs/next.png'
+    };
+  }
   async function render(entry, image, imageUrl) {
     const snapshot = state, connected = online, config = configuration;
     const revision = entry.renderRevision = (entry.renderRevision || 0) + 1;
@@ -108,7 +128,7 @@ export function createRuntime(streamDeck, {
       entry.scrolling = false;
       title = t('openButton');
       if (id === 'nowplaying') picture = 'imgs/music.png';
-      feedback = { title: 'Spotifast', value: t('offline'), indicator: 0, icon: 'imgs/music.png' };
+      feedback = id === 'multimedia' ? multimediaFeedback(entry, undefined, false) : { title: 'Spotifast', value: t('offline'), indicator: 0, icon: 'imgs/music.png' };
       if (['playpause', 'nowplaying', 'shuffle', 'repeat', 'like'].includes(id)) buttonState = 0;
     } else {
       if (['playpause', 'nowplaying'].includes(id)) buttonState = snapshot.state === 'playing' ? 1 : 0;
@@ -145,9 +165,10 @@ export function createRuntime(streamDeck, {
       if (id === 'device') title = shortText(snapshot.device || t('noDevice'), 18);
       if (id === 'setvolume') title = absoluteVolume(settings) + '%';
       if (id === 'volume') feedback = { title: shortText(snapshot.title || t('volumeTitle'), 24), value: snapshot.volume === null ? '—' : snapshot.volume + '%', indicator: snapshot.volume ?? 0, icon: entry.artImage ?? 'imgs/volumeup.png' };
+      if (id === 'multimedia') feedback = multimediaFeedback(entry, snapshot, true);
     }
     // Keep image strings out of JSON serialization on every animation frame.
-    const signature = { title, picture, feedback: feedback && [feedback.title, feedback.value, feedback.indicator, feedback.icon], buttonState };
+    const signature = { title, picture, feedback: feedback && Object.values(feedback), buttonState };
     const previous = entry.signature;
     if (!current() || (previous && previous.title === title && previous.picture === picture && previous.buttonState === buttonState &&
       (previous.feedback === signature.feedback || (previous.feedback && signature.feedback && previous.feedback.every((value, index) => value === signature.feedback[index]))))) return;
@@ -166,7 +187,13 @@ export function createRuntime(streamDeck, {
     if (entries.length) await renderPreview();
   }
   function entryAnimationPeriod(entry, clock = now()) {
-    if (!started || !online || suffix(entry.action) !== 'nowplaying') return undefined;
+    if (!started || !online) return undefined;
+    const actionId = suffix(entry.action);
+    if (actionId === 'multimedia') {
+      const elapsed = Math.max(0, clock - sampledAt), display = playbackDisplay(state, elapsed);
+      return state.state === 'playing' && display.positionMs !== undefined && elapsed < 5000 ? 1000 : undefined;
+    }
+    if (actionId !== 'nowplaying') return undefined;
     // Render an expired badge once as well, in case its expiry callback was delayed.
     if (entry.playbackFeedback) return 100;
     if (entry.scrolling && entry.settings.showText !== false && entry.settings.scrollText !== false) return 100;
@@ -201,12 +228,12 @@ export function createRuntime(streamDeck, {
     if (period !== undefined) animationInterval = timers.setInterval(() => animate().catch(report), period);
   }
   function requestArtwork() {
-    const url = started && online && [...visible.values()].some(entry => ['nowplaying', 'volume'].includes(suffix(entry.action))) ? state?.artUrl : undefined;
+    const url = started && online && [...visible.values()].some(entry => ['nowplaying', 'volume', 'multimedia'].includes(suffix(entry.action))) ? state?.artUrl : undefined;
     if (artwork.cancelExcept) {
       artwork.cancelExcept(url);
       for (const pendingUrl of artworkRequests.keys()) if (pendingUrl !== url) artworkRequests.delete(pendingUrl);
     }
-    const needsArtwork = entry => ['nowplaying', 'volume'].includes(suffix(entry.action)) &&
+    const needsArtwork = entry => ['nowplaying', 'volume', 'multimedia'].includes(suffix(entry.action)) &&
       (entry.artUrl !== url || !entry.artImage || (artwork.isFresh ? !artwork.isFresh(url, entry.artImage) : now() - entry.artSampledAt >= 36e5));
     if (!url || artworkRequests.has(url) || artworkRequests.size >= 4 || ![...visible.values()].some(needsArtwork)) return;
     const task = Promise.resolve().then(() => {
@@ -216,7 +243,7 @@ export function createRuntime(streamDeck, {
       if (!image || !started || !online || state?.artUrl !== url || artworkRequests.get(url) !== task) return;
       const changed = [];
       for (const entry of visible.values()) {
-        if (!['nowplaying', 'volume'].includes(suffix(entry.action))) continue;
+        if (!['nowplaying', 'volume', 'multimedia'].includes(suffix(entry.action))) continue;
         if (entry.artUrl !== url || entry.artImage !== image) changed.push(entry);
         else entry.artSampledAt = now();
       }
@@ -463,11 +490,29 @@ export function createRuntime(streamDeck, {
   });
   streamDeck.actions.onDialRotate(event => {
     if (event.payload.ticks === 0) return;
-    try { perform(event, commandFor('volume', event.payload.settings, event.payload.ticks)).catch(report); }
+    try {
+      const ticks = event.payload.ticks;
+      if (!Number.isInteger(ticks)) throw new Error('Invalid dial rotation');
+      if (suffix(event.action) === 'multimedia') {
+        if (Math.abs(ticks) > 32) throw new LocalizedError('commandQueueBusy');
+        const command = ticks < 0 ? ['previous'] : ['next'];
+        for (let index = 0; index < Math.abs(ticks); index++) perform(event, command).catch(report);
+      } else perform(event, commandFor('volume', event.payload.settings, ticks)).catch(report);
+    }
     catch (error) { performInvalid(event, error).catch(report); }
   });
-  streamDeck.actions.onDialDown(event => perform(event, ['mute']).catch(report));
-  streamDeck.actions.onTouchTap(event => perform(event, ['play-pause']).catch(report));
+  streamDeck.actions.onDialDown(event => perform(event, suffix(event.action) === 'multimedia' ? ['play-pause'] : ['mute']).catch(report));
+  streamDeck.actions.onTouchTap(event => {
+    if (suffix(event.action) !== 'multimedia') { perform(event, ['play-pause']).catch(report); return; }
+    const [x, y] = event.payload.tapPos ?? [];
+    const command = Number.isFinite(x) && Number.isFinite(y) && y >= 55
+      ? x >= 32 && x < 60 ? ['shuffle']
+        : x >= 61 && x < 90 ? ['previous']
+          : x >= 90 && x < 120 ? ['play-pause']
+            : x >= 121 && x < 153 ? ['next'] : ['play-pause']
+      : ['play-pause'];
+    perform(event, command).catch(report);
+  });
   streamDeck.ui.onSendToPlugin(event => { inspectorRequest(event).catch(report); });
   streamDeck.system.onSystemDidWakeUp(() => {
     resetPolling();

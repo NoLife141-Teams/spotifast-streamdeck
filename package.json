@@ -8,6 +8,7 @@
     "node": ">=20.9.0"
   },
   "scripts": {
+    "simulator": "node scripts/simulator/server.mjs",
     "build": "node scripts/build.mjs",
     "test": "node scripts/test.mjs",
     "validate": "streamdeck validate build/rocks.spotifast.streamdeck.sdPlugin",
